@@ -23,11 +23,10 @@ int main(int, const char *const *const) {
   int numberOfSamples = 512;
 
   // The parameters we are interested in
-  std::vector<NumericType> aspectRatios = {10.}; //, 30., 50., 70., 100.};
-  std::vector<NumericType> leftTaperAngles = {
-      0.0}; //{-2.0, -1.0, 0.0, 1.0, 2.0};
-  std::vector<NumericType> stickingProbabilities = {
-      0.05, 0.01, 0.005}; //{0.1, 0.07, 0.04, 0.01};
+  std::vector<NumericType> aspectRatios = {10., 30., 50., 70., 100.};
+  std::vector<NumericType> leftTaperAngles = {-2.0, 0.0, 2.0};
+  // std::vector<NumericType> rightTaperAngles = {0.0};
+  std::vector<NumericType> stickingProbabilities = {0.1, 0.07, 0.04, 0.01};
 
   unsigned totalCombinations = aspectRatios.size() * leftTaperAngles.size() *
                                stickingProbabilities.size();
@@ -74,9 +73,13 @@ int main(int, const char *const *const) {
     // NumericType trenchTopWidth = trenchDepth / aspectRatio;
     NumericType trenchDepth = trenchTopWidth * aspectRatio;
     for (auto leftTaperAngle : leftTaperAngles) {
+      // for (auto rightTaperAngle : rightTaperAngles) {
       NumericType rightTaperAngle = 0.0;
       const NumericType leftOffset =
           std::tan(leftTaperAngle * M_PI / 180.) * trenchDepth;
+
+      const NumericType rightOffset =
+          std::tan(rightTaperAngle * M_PI / 180.) * trenchDepth;
 
       // Check if the tapering would interfere with the depth of the trench
       if (trenchTopWidth / 2. - leftOffset <= gridDelta) {
@@ -88,8 +91,8 @@ int main(int, const char *const *const) {
       // Make sure that the trench sidewalls stay inside the simulation
       // domain, even if they are tapered.
       NumericType xExtent =
-          2. * (trenchTopWidth / 2 + std::max(leftOffset, NumericType{0.}) +
-                5. * gridDelta);
+          2. * (trenchTopWidth / 2 - std::min(leftOffset, NumericType{0.}) -
+                std::min(rightOffset, NumericType{0.}) + 5. * gridDelta);
 
       std::cout << trenchTopWidth << ", " << trenchDepth << ", " << xExtent
                 << std::endl;
@@ -101,7 +104,8 @@ int main(int, const char *const *const) {
 
       // {
       //   auto box =
-      //       lsSmartPointer<lsDomain<NumericType, D>>::New(trench->getGrid());
+      //       lsSmartPointer<lsDomain<NumericType,
+      //       D>>::New(trench->getGrid());
 
       //   NumericType minPoint[D];
       //   minPoint[0] = -xExtent / 2 - gridDelta;
@@ -124,8 +128,9 @@ int main(int, const char *const *const) {
         std::cout << count << '/' << totalCombinations << std::endl;
         ++count;
 
-        // Normalize the time scale to the sticking probability, so that we get
-        // the same top layer thickness for different sticking probabilities.
+        // Normalize the time scale to the sticking probability, so that we
+        // get the same top layer thickness for different sticking
+        // probabilities.
         NumericType timeScale = 1.0 / stickingProbability;
 
         // Ensure that we always have 11 samples
@@ -176,6 +181,7 @@ int main(int, const char *const *const) {
         process.apply();
 
         writer->flush();
+        // }
       }
     }
   }

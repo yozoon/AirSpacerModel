@@ -8,7 +8,10 @@
 #include <psCSVWriter.hpp>
 #include <psSmartPointer.hpp>
 
-#include "Utils.hpp"
+#include <lsWriter.hpp>
+
+// #include "Utils.hpp"
+
 template <typename NumericType, int D, typename FeatureExtractionType,
           typename WriterType>
 class AdvectionCallback : public psAdvectionCalback<NumericType, D> {
@@ -66,9 +69,12 @@ public:
     std::ostringstream name;
     for (unsigned i = 0; i < prefixData.size(); ++i)
       name << prefixData[i] << "_";
-    name << counter << ".vtp";
-    Utils::printSurface(domain->getLevelSets()->back(), name.str());
-    std::cout << "-- " << processTime / timeScale << '\n';
+    name << counter;
+    // Utils::printSurface(domain->getLevelSets()->back(), name.str() + ".vtp");
+    lsWriter<NumericType, D>(domain->getLevelSets()->back(),
+                             name.str() + ".lvst")
+        .apply();
+    std::cout << "-- " << timeModifier * processTime / timeScale << '\n';
     featureExtraction->setDomain(domain->getLevelSets()->back());
     featureExtraction->apply();
 
