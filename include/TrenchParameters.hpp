@@ -1,0 +1,28 @@
+#pragma once
+
+#include "Utils.hpp"
+template <typename T> struct TrenchParameters {
+  // Domain
+  T gridDelta = 0.2;
+  T xExtent = 10.;
+  T yExtent = 10.;
+
+  // Geometry
+  T trenchWidth = 4.;
+  T trenchHeight = 8.;
+  T taperAngle = -1.;
+
+  // Process
+  T processTime = 4.5;
+  T sourcePower = 1.;
+  T stickingProbability = 0.9;
+
+  void fromMap(std::unordered_map<std::string, std::string> &m) {
+    psUtils::AssignItems(                                         //
+        m,                                                        //
+        psUtils::Item{"taperAngle", taperAngle},                  //
+        psUtils::Item{"processTime", processTime},                //
+        psUtils::Item{"stickingProbability", stickingProbability} //
+    );
+  }
+};
