@@ -25,6 +25,7 @@ template <typename NumericType, int D>
 lsSmartPointer<lsDomain<NumericType, D>>
 MakeTrenchStamp(const hrleGrid<D> &grid,
                 const std::array<NumericType, 3> &origin,
+                const NumericType trenchDepth, const NumericType trenchTopWidth,
                 const std::vector<NumericType> &sampleLocations,
                 const std::vector<NumericType> &features) {
   int verticalDir = D - 1;
@@ -36,7 +37,7 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     return nullptr;
   }
 
-  const auto bounds = psUtils::getBoundsFromGrid<NumericType, D>(grid);
+  const auto bounds = Utils::getBoundsFromGrid<NumericType, D>(grid);
 
   // INFO: Mesh point numbering CW: solid is enclosed inside points
 
@@ -47,10 +48,11 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
   NumericType gridDelta = grid.getGridDelta();
 
   unsigned numSamplesRight =
-      static_cast<unsigned>(std::ceil(1.0 * (sampleLocations.size() - 1) / 2));
-  unsigned numSamplesLeft = sampleLocations.size() - 1 - numSamplesRight;
+      static_cast<unsigned>(std::ceil(1.0 * sampleLocations.size() / 2));
+  unsigned numSamplesLeft = sampleLocations.size() - numSamplesRight;
 
-  NumericType depth = features.front();
+  NumericType reconstructionRange = trenchDepth + trenchTopWidth;
+  NumericType trenchBase = -trenchDepth;
 
 #ifndef NDEBUG
   int meshCount = 0;
@@ -66,11 +68,10 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     if (j == 0) {
       // Add one point on top of the geometry, in order to avoid potential
       // sharp corners
-      std::array<NumericType, 3> point{0.};
-      std::copy(std::begin(origin), std::end(origin), point.begin());
+      std::array<NumericType, 3> point = origin;
 
-      point[horizontalDir] += features[1];
-      point[verticalDir] += 2 * gridDelta;
+      point[horizontalDir] += trenchTopWidth * features.front();
+      point[verticalDir] += trenchTopWidth + 2 * gridDelta;
       if constexpr (D == 2) {
         mesh->insertNextNode(point);
       } else if constexpr (D == 3) {
@@ -91,8 +92,8 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     for (unsigned i = nextJ; i < numSamplesRight; ++i) {
       nextJ = i;
 
-      if (features[i + 1] -
-              features[1 + numSamplesRight + std::min(numSamplesLeft - 1, i)] <
+      if (features[i] -
+              features[numSamplesRight + std::min(numSamplesLeft - 1, i)] <
           gridDelta / 5) {
 #ifndef NDEBUG
         std::cout << "Pinchoff point detected!\n";
@@ -100,10 +101,12 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
         break;
       }
 
-      std::array<NumericType, 3> point{0.};
-      std::copy(std::begin(origin), std::end(origin), point.begin());
-      point[horizontalDir] += features[1 + i];
-      point[verticalDir] += depth * (sampleLocations[1 + i] - 1.0);
+      std::array<NumericType, 3> point = origin;
+      point[horizontalDir] += trenchTopWidth * features[i];
+      point[verticalDir] +=
+          trenchBase + reconstructionRange * sampleLocations[i];
+
+      // std::cout << point[verticalDir] << '\n';
       if constexpr (D == 2) {
         mesh->insertNextNode(point);
       } else if constexpr (D == 3) {
@@ -121,12 +124,12 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     // pinch-off location.
     for (int i = std::min(numSamplesLeft - 1, nextJ); i > static_cast<int>(j);
          --i) {
-      std::array<NumericType, 3> point{0.};
-      std::copy(std::begin(origin), std::end(origin), point.begin());
+      std::array<NumericType, 3> point = origin;
 
-      point[horizontalDir] += features[numSamplesRight + 1 + i];
+      point[horizontalDir] += trenchTopWidth * features[numSamplesRight + i];
       point[verticalDir] +=
-          depth * (sampleLocations[numSamplesRight + 1 + i] - 1.0);
+          trenchBase +
+          reconstructionRange * sampleLocations[numSamplesRight + i];
 
       if constexpr (D == 2) {
         mesh->insertNextNode(point);
@@ -143,13 +146,11 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     if (j == 0) {
       // Add one point on top of the geometry, in order to avoid potential
       // sharp corners
-      std::array<NumericType, 3> point{0.};
-      std::copy(std::begin(origin), std::end(origin), point.begin());
+      std::array<NumericType, 3> point = origin;
 
-      point[horizontalDir] += features.back();
-      point[verticalDir] += 2 * gridDelta;
+      point[horizontalDir] += trenchTopWidth * features.back();
+      point[verticalDir] += trenchTopWidth + 2 * gridDelta;
       if constexpr (D == 2) {
-
         mesh->insertNextNode(point);
       } else if constexpr (D == 3) {
         point[trenchDir] = bounds[2 * trenchDir + 1];
@@ -231,7 +232,7 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
     }
 
 #ifndef NDEBUG
-    // Print the created hull mesh
+    //  Print the created hull mesh
     lsVTKWriter<NumericType>(mesh,
                              "hullMesh" + std::to_string(meshCount++) + ".vtp")
         .apply();

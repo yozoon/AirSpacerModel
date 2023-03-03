@@ -7,18 +7,6 @@
 #include <lsMakeGeometry.hpp>
 #include <lsSmartPointer.hpp>
 
-// template <typename NumericType, int D> struct TrenchParameters {
-//   std::array<NumericType, 3> origin{0.};
-//   NumericType gridDelta = 0.2;
-//   NumericType xExtent = 10.;
-//   NumericType yExtent = 10.;
-//   NumericType trenchTopWidth = 4.;
-//   NumericType trenchDepth = 8.;
-//   NumericType leftTaperingAngle = 0.;
-//   NumericType rightTaperingAngle = 0.;
-//   bool periodicBoundary = false;
-// };
-
 template <class NumericType, int D>
 lsSmartPointer<lsDomain<NumericType, D>>
 MakeTrench(const NumericType gridDelta, const NumericType xExtent,

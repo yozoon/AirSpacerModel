@@ -8,12 +8,16 @@
 #include <psCSVWriter.hpp>
 #include <psSmartPointer.hpp>
 
+#include "Utils.hpp"
 template <typename NumericType, int D, typename FeatureExtractionType,
           typename WriterType>
 class AdvectionCallback : public psAdvectionCalback<NumericType, D> {
 private:
   NumericType timeScale = 1.0;
   NumericType extractionInterval = 1.0;
+
+  NumericType timeModifier = 1.0;
+  NumericType lengthModifier = 1.0;
 
   NumericType processTime = 0.0;
   NumericType lastUpdateTime = 0.0;
@@ -40,6 +44,12 @@ public:
     featureExtraction = passedFeatureExtraction;
   }
 
+  void setModifiers(NumericType passedTimeModifier,
+                    NumericType passedLengthModifier) {
+    timeModifier = passedTimeModifier;
+    lengthModifier = passedLengthModifier;
+  }
+
   void setWriter(psSmartPointer<WriterType> passedWriter) {
     writer = passedWriter;
   }
@@ -53,6 +63,11 @@ public:
   }
 
   void apply() {
+    std::ostringstream name;
+    for (unsigned i = 0; i < prefixData.size(); ++i)
+      name << prefixData[i] << "_";
+    name << counter << ".vtp";
+    Utils::printSurface(domain->getLevelSets()->back(), name.str());
     std::cout << "-- " << processTime / timeScale << '\n';
     featureExtraction->setDomain(domain->getLevelSets()->back());
     featureExtraction->apply();
@@ -60,8 +75,11 @@ public:
     auto features = featureExtraction->getFeatures();
     if (features) {
       std::vector<NumericType> row(prefixData.begin(), prefixData.end());
-      row.push_back(processTime / timeScale);
-      std::copy(features->begin(), features->end(), std::back_inserter(row));
+      row.push_back(timeModifier * processTime / timeScale);
+      std::transform(features->begin(), features->end(),
+                     std::back_inserter(row),
+                     [=](auto &f) { return lengthModifier * f; });
+
       if (writer)
         writer->writeRow(row);
       if (dataPtr)
