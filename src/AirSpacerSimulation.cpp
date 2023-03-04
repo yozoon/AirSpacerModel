@@ -10,11 +10,12 @@
 #include <lsSmartPointer.hpp>
 #include <lsWriteVisualizationMesh.hpp>
 
-#include "CSVReader.hpp"
+#include <SimpleDeposition.hpp>
+#include <psDomain.hpp>
+#include <psProcess.hpp>
+
 #include "MakeTrench.hpp"
 #include "Utils.hpp"
-#include "interpolation/SplineGridInterpolation.hpp"
-#include "models/MakeTrenchStamp.hpp"
 
 template <typename NumericType> struct Parameters {
   NumericType gridDelta = 0.1;
@@ -53,27 +54,14 @@ int main(int argc, const char *const *const argv) {
   const NumericType initialTrenchTopWidth = 6.0;
   const NumericType initialTrenchDepth = 20.0;
 
-  std::string dataFile = "data.csv";
-  if (argc > 1)
-    dataFile = argv[1];
-
   Parameters<NumericType> params;
-  if (argc > 2) {
-    auto config = Utils::readConfigFile(argv[2]);
+  if (argc > 1) {
+    auto config = Utils::readConfigFile(argv[1]);
     if (config.empty()) {
       std::cerr << "Empty config provided" << std::endl;
       return -1;
     }
     params.fromMap(config);
-  }
-
-  if (params.aspectRatio < initialTrenchDepth / initialTrenchTopWidth) {
-    lsMessage::getInstance()
-        .addError(
-            std::string("The aspect ratio must not be smaller than the initial "
-                        "aspect ratio: ") +
-            std::to_string(initialTrenchDepth / initialTrenchTopWidth))
-        .print();
   }
 
   NumericType trenchTopWidth =
@@ -86,56 +74,6 @@ int main(int argc, const char *const *const argv) {
 
   std::cout << "trenchTopWidth=" << trenchTopWidth
             << ", trenchDepth=" << trenchDepth << std::endl;
-
-  CSVReader<NumericType> reader;
-  reader.setFilename(dataFile);
-
-  // Get a copy of the data from the data source
-  auto data = reader.getData();
-
-  // Also read the data that was stored alongside the actual data describing
-  // where it was sampled from (at which relative height)
-  auto sampleLocations = reader.getPositionalParameters();
-
-  // The input dimension is provided by the csv file named parameter
-  // 'InputDim' In our case it is 2 since we use taper angle and sticking
-  // probability as input parameters.
-  int inputDim;
-  auto namedParams = reader.getNamedParameters();
-  if (auto id = namedParams.find("InputDimension"); id != namedParams.end()) {
-    inputDim = static_cast<int>(std::round(id->second));
-  } else {
-    std::cout << "'InputDimension' not found in provided data CSV file.\n";
-    return EXIT_FAILURE;
-  }
-
-  std::cout << "InputDimension: " << inputDim << std::endl;
-
-  // The dimension of the data that is to be interpolated. In our case this
-  // are the extracted dimensions at different timesteps (the timesteps are
-  // also included in the data itself)
-  int numFeatures = data->at(0).size() - inputDim;
-
-  SplineGridInterpolation<NumericType> gridInterpolation;
-  gridInterpolation.setDataDimensions(inputDim, numFeatures);
-  gridInterpolation.setData(data);
-  gridInterpolation.setBCType(SplineBoundaryConditionType::NOT_A_KNOT);
-
-  std::vector<NumericType> evaluationPoint = {params.aspectRatio,
-                                              params.leftTaperAngle,
-                                              params.stickingProbability, 10.0};
-
-  auto estimationOpt = gridInterpolation.estimate(evaluationPoint);
-  if (!estimationOpt) {
-    lsMessage::getInstance().addError("Value estimation failed.").print();
-  }
-
-  auto [estimatedFeatures, isInside] = estimationOpt.value();
-
-  lsMessage::getInstance()
-      .addDebug(std::string("Evaluation point within data grid boundaries: ") +
-                (isInside ? std::string("true") : std::string("false")))
-      .print();
 
   std::array<NumericType, 3> origin{0.};
 
@@ -176,45 +114,52 @@ int main(int argc, const char *const *const argv) {
   auto nonConformalLayer =
       lsSmartPointer<lsDomain<NumericType, D>>::New(conformalLayer);
 
+  auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
+  geometry->insertNextLevelSet(nonConformalLayer);
+
+  auto processModel =
+      SimpleDeposition<NumericType, D>(
+          params.stickingProbability /* particle sticking probability */,
+          1.0 /* particle source power */)
+          .getProcessModel();
+
+  // Since we assume a top rate of 1, the maximum time it takes for the
+  // trench to close is equal to the trench top width (if sticking
+  // probability 1, otherwise the time until pinchoff will even be less)
+  NumericType processDuration = trenchTopWidth / params.stickingProbability;
+
+  psProcess<NumericType, D> process;
+  process.setDomain(geometry);
+  process.setProcessModel(processModel);
+  process.setNumberOfRaysPerPoint(2000);
+  process.setProcessDuration(processDuration);
+
+  // Run the process
+  process.apply();
+
+  // Do CMP to remove top of non-conformal layer
   {
     auto plane =
         lsSmartPointer<lsDomain<NumericType, D>>::New(substrate->getGrid());
 
     NumericType normal[D];
     normal[0] = 0.0;
-    normal[D - 1] = 1.0;
+    normal[D - 1] = -1.0;
     lsMakeGeometry<NumericType, D>(
         plane,
         lsSmartPointer<lsPlane<NumericType, D>>::New(origin.data(), normal))
         .apply();
 
-    lsBooleanOperation<NumericType, D>(nonConformalLayer, plane,
-                                       lsBooleanOperationEnum::UNION)
+    lsBooleanOperation<NumericType, D>(
+        nonConformalLayer, plane, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
   }
-
-  NumericType offset = 0.0;
-
-  origin[D - 1] -= offset;
-
-  trenchDepth -= offset;
-  trenchTopWidth = trenchDepth / params.aspectRatio;
-
-  auto stamp = MakeTrenchStamp<NumericType, D>(
-      nonConformalLayer->getGrid(), origin, trenchDepth, trenchTopWidth,
-      sampleLocations, estimatedFeatures);
-
-  Utils::printSurface(stamp, "stamp.vtp");
-
-  lsBooleanOperation<NumericType, D>(
-      nonConformalLayer, stamp, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
-      .apply();
 
   std::cout << "Writing visualization mesh...\n";
   lsWriteVisualizationMesh<NumericType, D> visMesh;
   visMesh.insertNextLevelSet(substrate);
   visMesh.insertNextLevelSet(conformalLayer);
   visMesh.insertNextLevelSet(nonConformalLayer);
-  visMesh.setFileName("AirGapEmulation");
+  visMesh.setFileName("AirGapSimulation");
   visMesh.apply();
 }

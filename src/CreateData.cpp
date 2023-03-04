@@ -122,9 +122,6 @@ int main(int, const char *const *const) {
             decltype(writer)::element_type>>::New(timeScale,
                                                   extractionInterval);
 
-        advectionCallback->setModifiers(1.0 / trenchTopWidth,
-                                        1.0 / trenchTopWidth);
-
         advectionCallback->setFeatureExtraction(featureExtraction);
         advectionCallback->setPrefixData(std::vector<NumericType>{
             aspectRatio, leftTaperAngle, stickingProbability});

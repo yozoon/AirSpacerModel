@@ -19,9 +19,6 @@ private:
   NumericType timeScale = 1.0;
   NumericType extractionInterval = 1.0;
 
-  NumericType timeModifier = 1.0;
-  NumericType lengthModifier = 1.0;
-
   NumericType processTime = 0.0;
   NumericType lastUpdateTime = 0.0;
   size_t counter = 0;
@@ -47,12 +44,6 @@ public:
     featureExtraction = passedFeatureExtraction;
   }
 
-  void setModifiers(NumericType passedTimeModifier,
-                    NumericType passedLengthModifier) {
-    timeModifier = passedTimeModifier;
-    lengthModifier = passedLengthModifier;
-  }
-
   void setWriter(psSmartPointer<WriterType> passedWriter) {
     writer = passedWriter;
   }
@@ -74,7 +65,8 @@ public:
     lsWriter<NumericType, D>(domain->getLevelSets()->back(),
                              name.str() + ".lvst")
         .apply();
-    std::cout << "-- " << timeModifier * processTime / timeScale << '\n';
+    std::cout << "-- " << counter << '\n';
+
     featureExtraction->setDomain(domain->getLevelSets()->back());
     featureExtraction->apply();
 
@@ -82,9 +74,7 @@ public:
     if (features) {
       std::vector<NumericType> row(prefixData.begin(), prefixData.end());
       row.push_back(counter);
-      std::transform(features->begin(), features->end(),
-                     std::back_inserter(row),
-                     [=](auto &f) { return lengthModifier * f; });
+      std::copy(features->begin(), features->end(), std::back_inserter(row));
 
       if (writer)
         writer->writeRow(row);

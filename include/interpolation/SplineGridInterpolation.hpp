@@ -155,6 +155,7 @@ public:
     auto equalSize = rearrange(localData.begin(), localData.end(), 0,
                                uniqueValues, inputDim, true);
 
+#ifndef NDEBUG
     std::cout << localData.size() << ", " << localData.at(0).size() << ", "
               << uniqueValues.size() << std::endl;
     for (auto &uv : uniqueValues) {
@@ -163,6 +164,7 @@ public:
         std::cout << v << " ,";
       std::cout << std::endl;
     }
+#endif
 
     if (!equalSize) {
       std::cout << "SplineGridInterpolation: Data is not arranged "
