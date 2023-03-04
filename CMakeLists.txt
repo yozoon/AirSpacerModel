@@ -30,11 +30,11 @@ list(APPEND PROJECT_INCLUDE_DIRS ${VIENNALS_INCLUDE_DIRS} include/)
 # Add libraries
 list(APPEND PROJECT_LIBRARIES ${VIENNALS_LIBRARIES} ${LAPACK_LIBRARIES})
 
-# # The main executable
-# set(EMULATION AirSpacerEmulation)
-# add_executable(${EMULATION} src/${EMULATION}.cpp)
-# target_include_directories(${EMULATION} PUBLIC ${PROJECT_INCLUDE_DIRS})
-# target_link_libraries(${EMULATION} PRIVATE ${PROJECT_LIBRARIES})
+# The main executable
+set(EMULATION AirSpacerEmulation)
+add_executable(${EMULATION} src/${EMULATION}.cpp)
+target_include_directories(${EMULATION} PUBLIC ${PROJECT_INCLUDE_DIRS})
+target_link_libraries(${EMULATION} PRIVATE ${PROJECT_LIBRARIES})
 
 set(L2V lvst2vtp)
 add_executable(${L2V} src/${L2V}.cpp)

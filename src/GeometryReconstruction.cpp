@@ -1,5 +1,6 @@
 #include <array>
 #include <iostream>
+#include <unordered_map>
 
 #include <lsDomain.hpp>
 #include <lsMesh.hpp>
@@ -54,25 +55,10 @@ int main(int argc, const char *const *const argv) {
     params.fromMap(config);
   }
 
-  const NumericType leftOffset =
-      std::tan(params.leftTaperAngle * M_PI / 180.) * params.trenchDepth;
-  const NumericType rightOffset =
-      std::tan(params.rightTaperAngle * M_PI / 180.) * params.trenchDepth;
-
-  // Check if the tapering would interfere with the depth of the trench
-  if (params.trenchTopWidth / 2. - leftOffset + rightOffset <=
-      params.gridDelta) {
-    std::cout << "Intersection in trench tapering detected. Skipping.\n";
-    return EXIT_FAILURE;
-  }
-
-  // Make sure that the trench sidewalls stay inside the simulation
-  // domain, even if they are tapered.
-  NumericType xExtent =
-      2. * (params.trenchTopWidth / 2 + std::max(leftOffset, NumericType{0.}) +
-            std::max(rightOffset, NumericType{0.}) + 5. * params.gridDelta);
+  NumericType xExtent = 10.0;
 
   std::array<NumericType, 3> origin{0.};
+
   // Generate the initial trench geometry
   auto levelset = MakeTrench<NumericType, D>(
       params.gridDelta, xExtent, 0., origin, params.trenchTopWidth,

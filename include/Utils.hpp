@@ -171,7 +171,7 @@ public:
       value = conv(k);
     } catch (std::exception &e) {
       std::cout << '\'' << k << "' couldn't be converted to type of parameter '"
-                << key << "'\n";
+                << key << "'\n. Error: " << e.what() << std::endl;
     }
   }
 };

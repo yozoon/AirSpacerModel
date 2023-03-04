@@ -81,7 +81,7 @@ public:
     auto features = featureExtraction->getFeatures();
     if (features) {
       std::vector<NumericType> row(prefixData.begin(), prefixData.end());
-      row.push_back(timeModifier * processTime / timeScale);
+      row.push_back(counter);
       std::transform(features->begin(), features->end(),
                      std::back_inserter(row),
                      [=](auto &f) { return lengthModifier * f; });

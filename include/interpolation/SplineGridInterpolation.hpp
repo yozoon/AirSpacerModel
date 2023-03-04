@@ -155,6 +155,15 @@ public:
     auto equalSize = rearrange(localData.begin(), localData.end(), 0,
                                uniqueValues, inputDim, true);
 
+    std::cout << localData.size() << ", " << localData.at(0).size() << ", "
+              << uniqueValues.size() << std::endl;
+    for (auto &uv : uniqueValues) {
+      std::cout << "size: " << uv.size() << std::endl;
+      for (auto &v : uv)
+        std::cout << v << " ,";
+      std::cout << std::endl;
+    }
+
     if (!equalSize) {
       std::cout << "SplineGridInterpolation: Data is not arranged "
                    "in a rectilinear grid!\n";

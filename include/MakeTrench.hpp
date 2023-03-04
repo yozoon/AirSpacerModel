@@ -5,16 +5,48 @@
 #include <lsDomain.hpp>
 #include <lsFromSurfaceMesh.hpp>
 #include <lsMakeGeometry.hpp>
+#include <lsMessage.hpp>
 #include <lsSmartPointer.hpp>
 
 template <class NumericType, int D>
 lsSmartPointer<lsDomain<NumericType, D>>
-MakeTrench(const NumericType gridDelta, const NumericType xExtent,
-           const NumericType yExtent, const std::array<NumericType, 3> &origin,
-           const NumericType trenchTopWidth, const NumericType trenchDepth,
+MakeTrench(const NumericType gridDelta, NumericType xExtent,
+           NumericType yExtent, const std::array<NumericType, 3> &origin,
+           const NumericType trenchTopWidth, NumericType trenchDepth,
            const NumericType leftTaperingAngle,
            const NumericType rightTaperingAngle, const bool periodicBoundary) {
   const static constexpr NumericType PI = std::acos(NumericType{-1});
+
+  const NumericType tanLeft = std::tan(leftTaperingAngle * PI / 180.);
+  const NumericType tanRight = std::tan(rightTaperingAngle * PI / 180.);
+  if (tanLeft + tanRight > 0) {
+    NumericType intersectionDepth = trenchTopWidth / (tanLeft + tanRight);
+    if (intersectionDepth < trenchDepth) {
+      lsMessage::getInstance()
+          .addWarning("MakeTrench: due to the provided tapering angles, the "
+                      "trench can only go to a depth of " +
+                      std::to_string(intersectionDepth))
+          .print();
+      trenchDepth = intersectionDepth;
+    }
+  }
+
+  const NumericType leftOffset = tanLeft * trenchDepth;
+  const NumericType rightOffset = tanRight * trenchDepth;
+
+  if (leftTaperingAngle < 0.0 || rightTaperingAngle < 0.0) {
+    NumericType requiredExtent =
+        2. * (trenchTopWidth / 2 - std::min(leftOffset, NumericType{0.}) -
+              std::min(rightOffset, NumericType{0.}) + 2. * gridDelta);
+
+    if (xExtent < requiredExtent) {
+      lsMessage::getInstance()
+          .addWarning("MakeTrench: due to the provided tapering angles, the "
+                      "extent of the simulation domain has to be extended.")
+          .print();
+      xExtent = requiredExtent;
+    }
+  }
 
   NumericType bounds[2 * D];
   bounds[0] = origin[0] - xExtent / 2.;
@@ -67,10 +99,7 @@ MakeTrench(const NumericType gridDelta, const NumericType xExtent,
       lsSmartPointer<lsDomain<NumericType, D>>::New(levelset->getGrid());
 
   auto mesh = lsSmartPointer<lsMesh<NumericType>>::New();
-  const NumericType leftOffset =
-      std::tan(leftTaperingAngle * PI / 180.) * trenchDepth;
-  const NumericType rightOffset =
-      std::tan(rightTaperingAngle * PI / 180.) * trenchDepth;
+
   if constexpr (D == 2) {
     for (int i = 0; i < 4; i++) {
       std::array<NumericType, 3> node = {0., 0., 0.};
@@ -90,7 +119,6 @@ MakeTrench(const NumericType gridDelta, const NumericType xExtent,
     mesh->insertNextLine(std::array<unsigned, 2>{3, 2});
     mesh->insertNextLine(std::array<unsigned, 2>{2, 1});
     mesh->insertNextLine(std::array<unsigned, 2>{1, 0});
-    lsVTKWriter<NumericType>(mesh, "points.vtp").apply();
     lsFromSurfaceMesh<NumericType, D>(cutout, mesh).apply();
   } else {
     for (int i = 0; i < 8; i++) {
