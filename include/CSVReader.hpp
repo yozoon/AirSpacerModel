@@ -10,6 +10,7 @@
 #include <tuple>
 #include <vector>
 
+#include <lsMessage.hpp>
 #include <lsSmartPointer.hpp>
 
 #include "Utils.hpp"
@@ -63,8 +64,10 @@ private:
     if (v.has_value())
       positionalParameters.push_back(v.value());
     else {
-      std::cout << "Error while converting parameter '" << input
-                << "' to numeric type.\n";
+      lsMessage::getInstance()
+          .addError(std::string("Couldn't convert parameter `") + input +
+                    std::string("` to numeric type."))
+          .print();
     }
   }
 
@@ -81,11 +84,17 @@ private:
       if (v.has_value())
         namedParameters.insert({smatch[1], v.value()});
       else {
-        std::cout << "Error while converting value of parameter '" << smatch[1]
-                  << "'\n";
+        lsMessage::getInstance()
+            .addError(std::string("Couldn't convert parameter `") +
+                      std::string(smatch[1]) +
+                      std::string("` to numeric type."))
+            .print();
       }
     } else {
-      std::cout << "Error while parsing parameter line '" << input << "'\n";
+      lsMessage::getInstance()
+          .addError(std::string("Couldn't parse parameter line `") + input +
+                    std::string("`"))
+          .print();
     }
   }
 
@@ -150,7 +159,10 @@ private:
         }
       }
     } else {
-      std::cout << "Couldn't open file '" << filename << "'\n";
+      lsMessage::getInstance()
+          .addError(std::string("Couldn't open file `") + filename +
+                    std::string("`"))
+          .print();
       return {};
     }
     return {header};
@@ -183,8 +195,11 @@ private:
           if (valueOpt)
             a.push_back(valueOpt.value());
           else {
-            std::cout << "Error while reading line " << lineCount - 1 << " in '"
-                      << filename << "'\n";
+            lsMessage::getInstance()
+                .addError(std::string("Error while reading line ") +
+                          std::to_string(lineCount - 1) + std::string(" in `") +
+                          filename + std::string("`"))
+                .print();
             return {};
           }
           ++i;
@@ -195,8 +210,11 @@ private:
           numCols = i;
 
         if (i != numCols) {
-          std::cout << "Invalid number of columns in line " << lineCount - 1
-                    << " in '" << filename << "'\n";
+          lsMessage::getInstance()
+              .addError(std::string("Invalid number of columns in line ") +
+                        std::to_string(lineCount - 1) + std::string(" in `") +
+                        filename + std::string("`"))
+              .print();
           return {};
         }
         data.push_back(a);
@@ -204,7 +222,11 @@ private:
       file.close();
       return data;
     } else {
-      std::cout << "Couldn't open file '" << filename << "'\n";
+
+      lsMessage::getInstance()
+          .addError(std::string("Couldn't open file `") + filename +
+                    std::string("`"))
+          .print();
       return {};
     }
   }

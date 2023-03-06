@@ -7,10 +7,10 @@
 #include <SimpleDeposition.hpp>
 #include <psProcess.hpp>
 
-#include "MakeTrench.hpp"
+#include "AdvectionCallback.hpp"
+#include "FeatureExtraction.hpp"
+#include "TrenchGeometry.hpp"
 #include "Utils.hpp"
-#include "simulation/AdvectionCallback.hpp"
-#include "simulation/FeatureExtraction.hpp"
 
 int main(int, const char *const *const) {
   using NumericType = double;
@@ -55,11 +55,11 @@ int main(int, const char *const *const) {
   // Creation of a descriptive/ detailed header
   std::string header =
       "aspectRatio,leftTaperAngle,stickingProbability,timestep";
-  for (int i = 0; i < numberOfSamples - 1; ++i)
+  for (int i = 0; i < numberOfSamples; ++i) {
     header += ",diameter_" + std::to_string(i);
-
-  header += "\nDiameter sample distribution along vertical axis (normalized to "
-            "trench minmax):";
+  }
+  header += "\nDiameters are normalized to the trench width.\nSample positions "
+            "along vertical axis (normalized to trench depth + trench width):";
   header += "\n!" + join(sampleLocations->begin(), sampleLocations->end());
   header += "\n!InputDimension=" + std::to_string(inputDimension);
 
@@ -77,31 +77,9 @@ int main(int, const char *const *const) {
       NumericType xExtent = 2.0 * trenchTopWidth;
 
       // Now that we know all geometry parameters generate the geometry
-      auto trench = MakeTrench<NumericType, D>(
+      auto trench = makeTrench<NumericType, D>(
           gridDelta, xExtent, 10., origin, trenchTopWidth, trenchDepth,
           leftTaperAngle, rightTaperAngle, false /* no periodic boundary*/);
-
-      // {
-      //   auto box =
-      //       lsSmartPointer<lsDomain<NumericType,
-      //       D>>::New(trench->getGrid());
-
-      //   NumericType minPoint[D];
-      //   minPoint[0] = -xExtent / 2 - gridDelta;
-      //   minPoint[1] = -gridDelta / 2;
-
-      //   NumericType maxPoint[D];
-      //   maxPoint[0] = -trenchTopWidth / 2;
-      //   maxPoint[1] = 10.;
-
-      //   lsMakeGeometry<NumericType, D>(
-      //       box, lsSmartPointer<lsBox<NumericType, D>>::New(minPoint,
-      //       maxPoint)) .apply();
-
-      //   lsBooleanOperation<NumericType, D>(
-      //       trench, box, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
-      //       .apply();
-      // }
 
       for (auto stickingProbability : stickingProbabilities) {
         std::cout << count << '/' << totalCombinations << std::endl;

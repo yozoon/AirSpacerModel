@@ -1,5 +1,5 @@
-#ifndef MAKE_TRENCH_STAMP_HPP
-#define MAKE_TRENCH_STAMP_HPP
+#ifndef CREATE_STAMP_FROM_FEATURES_HPP
+#define CREATE_STAMP_FROM_FEATURES_HPP
 
 #include <algorithm>
 #include <array>
@@ -19,20 +19,19 @@
 #include <lsVTKWriter.hpp>
 #endif
 
-#include "../Utils.hpp"
+#include "Utils.hpp"
 
 template <typename NumericType, int D>
-lsSmartPointer<lsDomain<NumericType, D>>
-MakeTrenchStamp(const hrleGrid<D> &grid,
-                const std::array<NumericType, 3> &origin,
-                const NumericType trenchDepth, const NumericType trenchTopWidth,
-                const std::vector<NumericType> &sampleLocations,
-                const std::vector<NumericType> &features) {
+lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
+    const hrleGrid<D> &grid, const std::array<NumericType, 3> &origin,
+    const NumericType trenchDepth, const NumericType trenchTopWidth,
+    const std::vector<NumericType> &featureLocations,
+    const std::vector<NumericType> &features) {
   int verticalDir = D - 1;
   int horizontalDir = 0;
   int trenchDir = D - 2;
 
-  if (features.size() != sampleLocations.size() || features.size() < 5) {
+  if (features.size() != featureLocations.size() || features.size() < 5) {
     std::cout << "Not enough features provided for reconstruction!\n";
     return nullptr;
   }
@@ -48,8 +47,8 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
   NumericType gridDelta = grid.getGridDelta();
 
   unsigned numSamplesRight =
-      static_cast<unsigned>(std::ceil(1.0 * sampleLocations.size() / 2));
-  unsigned numSamplesLeft = sampleLocations.size() - numSamplesRight;
+      static_cast<unsigned>(std::ceil(1.0 * featureLocations.size() / 2));
+  unsigned numSamplesLeft = featureLocations.size() - numSamplesRight;
 
   NumericType reconstructionRange = trenchDepth + trenchTopWidth;
   NumericType trenchBase = -trenchDepth;
@@ -104,7 +103,7 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
       std::array<NumericType, 3> point = origin;
       point[horizontalDir] += trenchTopWidth * features[i];
       point[verticalDir] +=
-          trenchBase + reconstructionRange * sampleLocations[i];
+          trenchBase + reconstructionRange * featureLocations[i];
 
       // std::cout << point[verticalDir] << '\n';
       if constexpr (D == 2) {
@@ -129,7 +128,7 @@ MakeTrenchStamp(const hrleGrid<D> &grid,
       point[horizontalDir] += trenchTopWidth * features[numSamplesRight + i];
       point[verticalDir] +=
           trenchBase +
-          reconstructionRange * sampleLocations[numSamplesRight + i];
+          reconstructionRange * featureLocations[numSamplesRight + i];
 
       if constexpr (D == 2) {
         mesh->insertNextNode(point);

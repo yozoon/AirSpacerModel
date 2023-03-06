@@ -14,7 +14,7 @@
 #include <psDomain.hpp>
 #include <psProcess.hpp>
 
-#include "MakeTrench.hpp"
+#include "TrenchGeometry.hpp"
 #include "Utils.hpp"
 
 template <typename NumericType> struct Parameters {
@@ -78,7 +78,7 @@ int main(int argc, const char *const *const argv) {
   std::array<NumericType, 3> origin{0.};
 
   // Generate the initial trench geometry
-  auto substrate = MakeTrench<NumericType, D>(
+  auto substrate = makeTrench<NumericType, D>(
       params.gridDelta, initialTrenchTopWidth + 4.0, 0., origin,
       initialTrenchTopWidth, initialTrenchDepth, params.leftTaperAngle, 0.0,
       false /* no periodic boundary*/);

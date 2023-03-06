@@ -1,0 +1,5 @@
+# Configuration file for the AirSpacerEmulation and AirSpacerSimulation examples
+aspectRatio = 20
+leftTaperAngle = 0
+stickingProbability = 0.1
+offset = 0.4

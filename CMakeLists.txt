@@ -43,12 +43,12 @@ target_link_libraries(${L2V} PRIVATE ${PROJECT_LIBRARIES})
 
 # Copy data and config files to the build directory
 configure_file(data/data.csv ${CMAKE_CURRENT_BINARY_DIR}/data.csv COPYONLY)
-# configure_file(data/config.txt ${CMAKE_CURRENT_BINARY_DIR}/config.txt COPYONLY)
+configure_file(data/config.txt ${CMAKE_CURRENT_BINARY_DIR}/config.txt COPYONLY)
 
 # Optional executables for generating the dataset as well as for testing
 # the extraction and reconstruction functionality
 set(VIENNAPS_VERBOSE OFF)
-find_package(ViennaPS)
+find_package(ViennaPS QUIET)
 if(ViennaPS_FOUND)
   list(APPEND PROJECT_INCLUDE_DIRS ${VIENNAPS_INCLUDE_DIRS})
   list(APPEND PROJECT_LIBRARIES ${VIENNAPS_LIBRARIES})
@@ -63,7 +63,6 @@ if(ViennaPS_FOUND)
   target_include_directories(${RECONSTRUCTION} PUBLIC ${PROJECT_INCLUDE_DIRS})
   target_link_libraries(${RECONSTRUCTION} PRIVATE ${PROJECT_LIBRARIES})
 
-  # The main executable
   set(SIMULATION AirSpacerSimulation)
   add_executable(${SIMULATION} src/${SIMULATION}.cpp)
   target_include_directories(${SIMULATION} PUBLIC ${PROJECT_INCLUDE_DIRS})

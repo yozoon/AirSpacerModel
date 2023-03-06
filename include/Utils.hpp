@@ -12,11 +12,15 @@
 
 #include <lsDomain.hpp>
 #include <lsMesh.hpp>
+#include <lsMessage.hpp>
 #include <lsSmartPointer.hpp>
 #include <lsToSurfaceMesh.hpp>
 #include <lsVTKWriter.hpp>
 
 namespace Utils {
+template <typename NumericType>
+inline constexpr NumericType PI = std::acos(NumericType{-1});
+
 template <typename NumericType, int D>
 void printSurface(lsSmartPointer<lsDomain<NumericType, D>> levelset,
                   const std::string &filename) {
@@ -98,8 +102,11 @@ template <typename T> std::optional<T> safeConvert(const std::string &s) {
   try {
     value = convert<T>(s);
   } catch (std::exception &e) {
-    std::cout << '\'' << s << "' couldn't be converted to type  '"
-              << typeid(value).name() << "'\n";
+    lsMessage::getInstance()
+        .addWarning(std::string("`") + s +
+                    std::string("` couldn't be converted to type  `") +
+                    typeid(value).name() + std::string("`"))
+        .print();
     return std::nullopt;
   }
   return {value};
@@ -130,7 +137,10 @@ parseConfigStream(std::istream &input) {
     std::smatch smatch;
     if (std::regex_search(line, smatch, keyValueRegex)) {
       if (smatch.size() < 3) {
-        std::cerr << "Malformed line:\n " << line;
+        lsMessage::getInstance()
+            .addError(std::string("Malformed line: `") + line +
+                      std::string("`"))
+            .print();
         continue;
       }
 
@@ -145,7 +155,10 @@ std::unordered_map<std::string, std::string>
 readConfigFile(const std::string &filename) {
   std::ifstream f(filename);
   if (!f.is_open()) {
-    std::cout << "Failed to open config file '" << filename << "'\n";
+    lsMessage::getInstance()
+        .addWarning(std::string("Failed to open config file `") + filename +
+                    std::string("`"))
+        .print();
     return {};
   }
   return parseConfigStream(f);
@@ -170,8 +183,12 @@ public:
     try {
       value = conv(k);
     } catch (std::exception &e) {
-      std::cout << '\'' << k << "' couldn't be converted to type of parameter '"
-                << key << "'\n. Error: " << e.what() << std::endl;
+      lsMessage::getInstance()
+          .addError(
+              std::string("`") + k +
+              std::string("` couldn't be converted to type of parameter `") +
+              key + std::string("`. Reason: ") + std::string(e.what()))
+          .print();
     }
   }
 };
@@ -185,8 +202,11 @@ void AssignItems(std::unordered_map<std::string, std::string> &map,
     // Remove the item from the map, since it is now 'consumed'.
     map.erase(it);
   } else {
-    std::cout << "Couldn't find '" << item.key
-              << "' in parameter file. Using default value instead.\n";
+    lsMessage::getInstance()
+        .addDebug(
+            std::string("Couldn't find `") + item.key +
+            std::string("` in parameter file. Using default value instead."))
+        .print();
   }
 }
 

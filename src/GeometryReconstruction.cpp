@@ -11,11 +11,10 @@
 #include <psProcess.hpp>
 #include <psUtils.hpp>
 
-#include "models/MakeTrenchStamp.hpp"
-#include "simulation/AdvectionCallback.hpp"
-#include "simulation/FeatureExtraction.hpp"
-
-#include "MakeTrench.hpp"
+#include "AdvectionCallback.hpp"
+#include "CreateStampFromFeatures.hpp"
+#include "FeatureExtraction.hpp"
+#include "TrenchGeometry.hpp"
 
 template <typename NumericType, int D> struct Parameters {
   NumericType gridDelta = 0.2;
@@ -60,7 +59,7 @@ int main(int argc, const char *const *const argv) {
   std::array<NumericType, 3> origin{0.};
 
   // Generate the initial trench geometry
-  auto levelset = MakeTrench<NumericType, D>(
+  auto levelset = makeTrench<NumericType, D>(
       params.gridDelta, xExtent, 0., origin, params.trenchTopWidth,
       params.trenchDepth, params.leftTaperAngle, params.rightTaperAngle,
       false /* no periodic boundary*/);
@@ -98,23 +97,23 @@ int main(int argc, const char *const *const argv) {
   extraction.setTrenchDimensions(params.trenchDepth, params.trenchTopWidth);
   extraction.apply();
 
-  auto sampleLocations = extraction.getSampleLocations();
+  auto featureLocations = extraction.getSampleLocations();
   auto features = extraction.getFeatures();
 
 #ifndef NDEBUG
   std::cout << "Number of features=" << features->size() << std::endl;
-  for (unsigned i = 0; i < sampleLocations->size(); ++i) {
+  for (unsigned i = 0; i < featureLocations->size(); ++i) {
     std::cout << i << ": " << std::setprecision(4)
               << -params.trenchDepth +
                      (params.trenchDepth + params.trenchTopWidth) *
-                         sampleLocations->at(i)
+                         featureLocations->at(i)
               << ", " << features->at(i) << '\n';
   }
 #endif
   // Now reconstruct the geometry based on the extracted features
-  auto stamp =
-      MakeTrenchStamp(levelset->getGrid(), origin, params.trenchDepth,
-                      params.trenchTopWidth, *sampleLocations, *features);
+  auto stamp = createStampFromFeatures(
+      levelset->getGrid(), origin, params.trenchDepth, params.trenchTopWidth,
+      *featureLocations, *features);
 
   auto reconstructedGeometry =
       lsSmartPointer<lsDomain<NumericType, D>>::New(levelset->getGrid());
@@ -126,6 +125,9 @@ int main(int argc, const char *const *const argv) {
   planeOrigin[D - 1] = params.processDuration;
 
   NumericType normal[D];
+  normal[0] = 0.;
+  normal[1] = 0.;
+
   normal[D - 1] = 1;
 
   lsMakeGeometry<NumericType, D>(
