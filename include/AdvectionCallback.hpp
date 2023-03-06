@@ -23,6 +23,8 @@ private:
   NumericType lastUpdateTime = 0.0;
   size_t counter = 0;
   std::vector<NumericType> prefixData;
+  NumericType timeModifier = 1.0;
+  NumericType lengthModifier = 1.0;
 
   psSmartPointer<FeatureExtractionType> featureExtraction = nullptr;
   psSmartPointer<WriterType> writer = nullptr;
@@ -42,6 +44,12 @@ public:
   void setFeatureExtraction(
       psSmartPointer<FeatureExtractionType> passedFeatureExtraction) {
     featureExtraction = passedFeatureExtraction;
+  }
+
+  void setModifiers(NumericType passedTimeModifier,
+                    NumericType passedLengthModifier) {
+    timeModifier = passedTimeModifier;
+    lengthModifier = passedLengthModifier;
   }
 
   void setWriter(psSmartPointer<WriterType> passedWriter) {
@@ -73,8 +81,10 @@ public:
     auto features = featureExtraction->getFeatures();
     if (features) {
       std::vector<NumericType> row(prefixData.begin(), prefixData.end());
-      row.push_back(counter);
-      std::copy(features->begin(), features->end(), std::back_inserter(row));
+      row.push_back(timeModifier * counter);
+      std::transform(features->begin(), features->end(),
+                     std::back_inserter(row),
+                     [=](auto &v) { return lengthModifier * v; });
 
       if (writer)
         writer->writeRow(row);

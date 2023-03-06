@@ -52,9 +52,9 @@ int main(int, const char *const *const) {
   const std::string filename = "data.csv";
   auto writer = lsSmartPointer<psCSVWriter<NumericType>>::New(filename);
 
-  // Creation of a descriptive/ detailed header
+  // Creation of a descriptive header
   std::string header =
-      "aspectRatio,leftTaperAngle,stickingProbability,timestep";
+      "aspectRatio,leftTaperAngle,stickingProbability,normalizedTime";
   for (int i = 0; i < numberOfSamples; ++i) {
     header += ",diameter_" + std::to_string(i);
   }
@@ -91,7 +91,8 @@ int main(int, const char *const *const) {
         NumericType timeScale = 1.0 / stickingProbability;
 
         // Ensure that we always have 11 samples
-        NumericType extractionInterval = trenchTopWidth / 10.;
+        NumericType maxTime = 10.0;
+        NumericType extractionInterval = trenchTopWidth / maxTime;
 
         featureExtraction->setTrenchDimensions(trenchDepth, trenchTopWidth);
 
@@ -104,6 +105,7 @@ int main(int, const char *const *const) {
         advectionCallback->setPrefixData(std::vector<NumericType>{
             aspectRatio, leftTaperAngle, stickingProbability});
         advectionCallback->setWriter(writer);
+        advectionCallback->setModifiers(1.0 / maxTime, 1.0);
 
         auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
         geometry->insertNextLevelSet(trench);
