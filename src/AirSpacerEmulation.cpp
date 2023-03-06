@@ -8,9 +8,9 @@
 #include <lsSmartPointer.hpp>
 #include <lsWriteVisualizationMesh.hpp>
 
+#include "GeometricAirSpacerModel.hpp"
 #include "TrenchGeometry.hpp"
 #include "Utils.hpp"
-#include "GeometricAirSpacerModel.hpp"
 
 template <typename NumericType> struct Parameters {
   NumericType aspectRatio = 15.0;
@@ -100,10 +100,14 @@ int main(int argc, const char *const *const argv) {
 
   auto geometry = lsSmartPointer<
       std::vector<lsSmartPointer<lsDomain<NumericType, D>>>>::New();
-  geometry->reserve(3);
+  geometry->reserve(4);
+
+  std::array<NumericType, 3> baseOrigin = origin;
+  baseOrigin[D - 1] -= initialTrenchDepth;
 
   auto grid = createGrid<NumericType, D>(origin, gridDelta, horizontalExtent,
                                          yExtent, false /* no periodic bc */);
+  geometry->emplace_back(createPlane<NumericType, D>(grid, baseOrigin));
   geometry->emplace_back(createPlane<NumericType, D>(grid, origin));
 
   // Apply the emulation model to the geometry
@@ -119,6 +123,6 @@ int main(int argc, const char *const *const argv) {
   for (auto ls : *geometry) {
     visMesh.insertNextLevelSet(ls);
   }
-  visMesh.setFileName("AirGapEmulation");
+  visMesh.setFileName("AirSpacerEmulation");
   visMesh.apply();
 }

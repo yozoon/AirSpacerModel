@@ -16,6 +16,7 @@
 #include "CSVReader.hpp"
 #include "CreateStampFromFeatures.hpp"
 #include "SplineGridInterpolation.hpp"
+#include "TrenchGeometry.hpp"
 #include "Utils.hpp"
 
 template <typename NumericType, int D> class GeometricAirSpacerModel {

@@ -18,7 +18,6 @@
 #include "Utils.hpp"
 
 template <typename NumericType> struct Parameters {
-  NumericType gridDelta = 0.1;
   NumericType aspectRatio = 15.0;
   NumericType leftTaperAngle = 0.0;
   NumericType stickingProbability = 0.1;
@@ -50,6 +49,8 @@ int main(int argc, const char *const *const argv) {
   using NumericType = double;
   static constexpr int D = 2;
 
+  const NumericType gridDelta = 0.08;
+
   // Parameters given by the N7 FinFET specification
   const NumericType initialTrenchTopWidth = 6.0;
   const NumericType initialTrenchDepth = 20.0;
@@ -77,18 +78,53 @@ int main(int argc, const char *const *const argv) {
 
   std::array<NumericType, 3> origin{0.};
 
-  // Generate the initial trench geometry
-  auto substrate = makeTrench<NumericType, D>(
-      params.gridDelta, initialTrenchTopWidth + 4.0, 0., origin,
-      initialTrenchTopWidth, initialTrenchDepth, params.leftTaperAngle, 0.0,
-      false /* no periodic boundary*/);
+  const NumericType xExtent = initialTrenchTopWidth + 4.0;
+  const NumericType yExtent = 5.0;
 
-  // Apply a layer of conformal SiN
+  const auto [leftBound, rightBound] = calculateHorizontalTrenchBounds(
+      initialTrenchTopWidth, initialTrenchDepth, params.leftTaperAngle, 0.0);
+
+  NumericType requiredExtent =
+      2.0 * std::max(-leftBound, rightBound) + 2.0 * gridDelta;
+
+  NumericType horizontalExtent = xExtent;
+  if (horizontalExtent < requiredExtent) {
+    lsMessage::getInstance()
+        .addWarning("makeTrench: due to the provided tapering angles, the "
+                    "extent of the simulation domain has to be extended.")
+        .print();
+    horizontalExtent = requiredExtent;
+  }
+
+  auto geometry = lsSmartPointer<
+      std::vector<lsSmartPointer<lsDomain<NumericType, D>>>>::New();
+  geometry->reserve(4);
+
+  std::array<NumericType, 3> baseOrigin = origin;
+  baseOrigin[D - 1] -= initialTrenchDepth;
+
+  auto grid = createGrid<NumericType, D>(origin, gridDelta, horizontalExtent,
+                                         yExtent, false /* no periodic bc */);
+  geometry->emplace_back(createPlane<NumericType, D>(grid, baseOrigin));
+
+  // Create the initial trench geometry
+  auto substrate = createPlane<NumericType, D>(grid, origin);
+  auto cutout = createTrenchStamp<NumericType, D>(
+      grid, origin, initialTrenchDepth, initialTrenchTopWidth,
+      params.leftTaperAngle, 0.0);
+
+  lsBooleanOperation<NumericType, D>(
+      substrate, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+      .apply();
+
+  geometry->push_back(substrate);
+
+  // Deposit the conformal liner
   auto conformalLayer =
       lsSmartPointer<lsDomain<NumericType, D>>::New(substrate);
 
   auto dist = lsSmartPointer<lsSphereDistribution<NumericType, D>>::New(
-      conformalLayerThickness, params.gridDelta);
+      conformalLayerThickness, gridDelta);
 
   lsGeometricAdvect<NumericType, D>(conformalLayer, dist).apply();
 
@@ -109,13 +145,14 @@ int main(int argc, const char *const *const argv) {
         conformalLayer, plane, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
   }
+  geometry->push_back(conformalLayer);
 
   // Create non-conformal layer
   auto nonConformalLayer =
       lsSmartPointer<lsDomain<NumericType, D>>::New(conformalLayer);
 
-  auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
-  geometry->insertNextLevelSet(nonConformalLayer);
+  auto psGeom = psSmartPointer<psDomain<NumericType, D>>::New();
+  psGeom->insertNextLevelSet(nonConformalLayer);
 
   auto processModel =
       SimpleDeposition<NumericType, D>(
@@ -129,7 +166,7 @@ int main(int argc, const char *const *const argv) {
   NumericType processDuration = trenchTopWidth / params.stickingProbability;
 
   psProcess<NumericType, D> process;
-  process.setDomain(geometry);
+  process.setDomain(psGeom);
   process.setProcessModel(processModel);
   process.setNumberOfRaysPerPoint(2000);
   process.setProcessDuration(processDuration);
@@ -154,12 +191,14 @@ int main(int argc, const char *const *const argv) {
         nonConformalLayer, plane, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
   }
+  geometry->push_back(nonConformalLayer);
 
+  // Export the resulting geometry as a visualization mesh
   std::cout << "Writing visualization mesh...\n";
   lsWriteVisualizationMesh<NumericType, D> visMesh;
-  visMesh.insertNextLevelSet(substrate);
-  visMesh.insertNextLevelSet(conformalLayer);
-  visMesh.insertNextLevelSet(nonConformalLayer);
-  visMesh.setFileName("AirGapSimulation");
+  for (auto ls : *geometry) {
+    visMesh.insertNextLevelSet(ls);
+  }
+  visMesh.setFileName("AirSpacerSimulation");
   visMesh.apply();
 }
