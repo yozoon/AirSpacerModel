@@ -143,64 +143,37 @@ public:
         .print();
 #endif
 
-    auto cutout = createTrenchStamp<NumericType, D>(
+    auto outerTrench = createTrenchStamp<NumericType, D>(
         grid, origin, initialTrenchDepth, initialTrenchTopWidth, leftTaperAngle,
         0.0);
 
+    auto innerTrench = createTrenchStamp<NumericType, D>(
+        grid, origin, trenchDepth, trenchTopWidth, leftTaperAngle, 0.0);
+
+    // Copy the substrate into two new layers
+    auto conformalLayer =
+        lsSmartPointer<lsDomain<NumericType, D>>::New(geometry->back());
+
+    auto nonConformalLayer =
+        lsSmartPointer<lsDomain<NumericType, D>>::New(geometry->back());
+
+    // Cut the outer trench out of the substrate
     lsBooleanOperation<NumericType, D>(
-        geometry->back(), cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+        geometry->back(), outerTrench,
+        lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
 
 #ifndef NDEBUG
     Utils::printSurface(geometry->back(), "trench.vtp");
 #endif
 
-    // Deposit conformal dielectric liner (using geometric advection)
-    auto conformalLayer =
-        lsSmartPointer<lsDomain<NumericType, D>>::New(geometry->back());
+    // Cut the inner trench out of the conformal layer
+    lsBooleanOperation<NumericType, D>(
+        conformalLayer, innerTrench,
+        lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+        .apply();
 
-    auto dist = lsSmartPointer<lsSphereDistribution<NumericType, D>>::New(
-        conformalLayerThickness, gridDelta);
-
-    lsGeometricAdvect<NumericType, D>(conformalLayer, dist).apply();
-
-    // Do CMP to remove top of conformal liner
-    {
-      auto plane = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
-
-      NumericType normal[D];
-      normal[0] = 0.0;
-      normal[D - 1] = -1.0;
-      lsMakeGeometry<NumericType, D>(
-          plane,
-          lsSmartPointer<lsPlane<NumericType, D>>::New(origin.data(), normal))
-          .apply();
-
-      lsBooleanOperation<NumericType, D>(
-          conformalLayer, plane, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
-          .apply();
-    }
     geometry->push_back(conformalLayer);
-
-    // Deposit non-conformal dielectric layer
-    auto nonConformalLayer =
-        lsSmartPointer<lsDomain<NumericType, D>>::New(conformalLayer);
-
-    {
-      auto plane = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
-
-      NumericType normal[D];
-      normal[0] = 0.0;
-      normal[D - 1] = 1.0;
-      lsMakeGeometry<NumericType, D>(
-          plane,
-          lsSmartPointer<lsPlane<NumericType, D>>::New(origin.data(), normal))
-          .apply();
-
-      lsBooleanOperation<NumericType, D>(nonConformalLayer, plane,
-                                         lsBooleanOperationEnum::UNION)
-          .apply();
-    }
 
     std::array<NumericType, 3> shiftedOrigin = origin;
     shiftedOrigin[D - 1] -= offset;
@@ -216,6 +189,8 @@ public:
     Utils::printSurface(stamp, "stamp.vtp");
 #endif
 
+    // And finally cut the interpolated air spacer out of the non-conformal
+    // layer
     lsBooleanOperation<NumericType, D>(
         nonConformalLayer, stamp, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
