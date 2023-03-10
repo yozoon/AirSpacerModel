@@ -116,9 +116,41 @@ std::vector<V> toVector(const std::string &s, C conv) {
   return vec;
 }
 
-template <typename V> std::vector<V> toVector(const std::string &s) {
+template <typename V> inline std::vector<V> toVector(const std::string &s) {
   return toVector<V, decltype(&Utils::convert<V>)>(s, &Utils::convert<V>);
 }
+
+// Special conversion functions
+template <typename NumericType>
+inline NumericType toStrictlyPositive(const std::string &s) {
+  auto value = Utils::convert<NumericType>(s);
+  if (value <= 0.0)
+    throw std::invalid_argument("Value must be strictly positive.");
+  return value;
+};
+
+template <typename NumericType>
+inline NumericType toUnitRange(const std::string &s) {
+  auto value = Utils::convert<NumericType>(s);
+  if (value > 1.0 || value <= 0.0)
+    throw std::invalid_argument("Value must be in the range [1,0).");
+  return value;
+};
+
+bool toBool(const std::string &s) {
+  auto lower = s;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  bool value = false;
+  if (lower == "true" || lower == "1") {
+    value = true;
+  } else if (lower == "false" || lower == "0") {
+    value = false;
+  } else {
+    throw std::invalid_argument("Failed to convert value to boolean.");
+  }
+  return value;
+};
 
 template <class Iterator>
 std::string join(Iterator begin, Iterator end,
@@ -234,15 +266,13 @@ public:
 
 // If the key is found inthe unordered_map, then the
 template <typename K, typename V, typename C>
-void AssignItems(std::unordered_map<std::string, std::string> &map,
+void AssignItems(const std::unordered_map<std::string, std::string> &map,
                  Item<K, V, C> &&item) {
   if (auto it = map.find(item.key); it != map.end()) {
     item(it->second);
-    // Remove the item from the map, since it is now 'consumed'.
-    map.erase(it);
   } else {
     lsMessage::getInstance()
-        .addDebug(
+        .addWarning(
             std::string("Couldn't find `") + item.key +
             std::string("` in parameter file. Using default value instead."))
         .print();
@@ -251,7 +281,7 @@ void AssignItems(std::unordered_map<std::string, std::string> &map,
 
 // Peels off items from parameter pack
 template <typename K, typename V, typename C, typename... ARGS>
-void AssignItems(std::unordered_map<std::string, std::string> &map,
+void AssignItems(const std::unordered_map<std::string, std::string> &map,
                  Item<K, V, C> &&item, ARGS &&...args) {
   AssignItems(map, std::forward<Item<K, V, C>>(item));
   AssignItems(map, std::forward<ARGS>(args)...);
