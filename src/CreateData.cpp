@@ -202,13 +202,6 @@ int main(const int argc, const char *const *const argv) {
   auto params = Parameters<NumericType>::fromMap(config);
   params.print();
 
-  for (const auto [aspectRatio, leftTaperAngle, rightTaperAngle,
-                   stickingProbability] : params) {
-    std::cout << aspectRatio << ", " << leftTaperAngle << ", "
-              << rightTaperAngle << ", " << stickingProbability << '\n';
-  }
-  return 0;
-
   // The data we are going to store consists of stickingProbability,
   // taperAngle, time and the sampled geometry descriptors as provided by the
   // feature extraction.
@@ -302,6 +295,4 @@ int main(const int argc, const char *const *const argv) {
 
     writer->flush();
   }
-
-  // return EXIT_SUCCESS;
 }
