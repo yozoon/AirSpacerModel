@@ -132,9 +132,9 @@ public:
         (2 * initialTrenchDepth - initialTrenchTopWidth) /
         (2 * aspectRatio - 1);
     NumericType trenchDepth = aspectRatio * trenchTopWidth;
-    NumericType conformalLayerThickness = initialTrenchDepth - trenchDepth;
 
 #ifndef NDEBUG
+    NumericType conformalLayerThickness = initialTrenchDepth - trenchDepth;
     lsMessage::getInstance()
         .addDebug("trenchTopWidth=" + std::to_string(trenchTopWidth) +
                   ", trenchDepth=" + std::to_string(trenchDepth) +

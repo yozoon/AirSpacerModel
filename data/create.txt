@@ -1,0 +1,6 @@
+# Configuration file for the AirSpacerEmulation and AirSpacerSimulation examples
+filename = data.csv
+aspectRatios = 10., 30., 50., 70., 100.
+taperAngles = -5.0, 0.0, 5.0, 10.0
+stickingProbabilities = 0.1, 0.07, 0.04, 0.01
+taperBothSidewalls = true

@@ -5,7 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <regex>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -95,6 +95,42 @@ template <typename T> T convert(const std::string &s) {
   }
 }
 
+template <typename V, typename C>
+std::vector<V> toVector(const std::string &s, C conv) {
+  const char delimiter = ',';
+  std::istringstream istr(s);
+  std::vector<V> vec;
+  std::string item;
+  while (std::getline(istr, item, delimiter)) {
+    try {
+      vec.push_back(conv(item));
+    } catch (std::exception &e) {
+      lsMessage::getInstance()
+          .addError(
+              std::string(
+                  "Value couldn't be converted to requested type. Reason: ") +
+              std::string(e.what()))
+          .print();
+    }
+  }
+  return vec;
+}
+
+template <typename V> std::vector<V> toVector(const std::string &s) {
+  return toVector<V, decltype(&Utils::convert<V>)>(s, &Utils::convert<V>);
+}
+
+template <class Iterator>
+std::string join(Iterator begin, Iterator end,
+                 const std::string &separator = ",") {
+  std::ostringstream ostr;
+  if (begin != end)
+    ostr << *begin++;
+  while (begin != end)
+    ostr << separator << *begin++;
+  return ostr.str();
+}
+
 // safeConvert wraps the convert function to catch exceptions. If an error
 // occurs the default initialized value is returned.
 template <typename T> std::optional<T> safeConvert(const std::string &s) {
@@ -112,40 +148,43 @@ template <typename T> std::optional<T> safeConvert(const std::string &s) {
   return {value};
 }
 
+std::string trim(const std::string &str,
+                 const std::string &whitespace = " \t") {
+  const auto strBegin = str.find_first_not_of(whitespace);
+  if (strBegin == std::string::npos)
+    return std::string("");
+
+  const auto strEnd = str.find_last_not_of(whitespace);
+  const auto strRange = strEnd - strBegin + 1;
+
+  return str.substr(strBegin, strRange);
+}
+
 std::unordered_map<std::string, std::string>
 parseConfigStream(std::istream &input) {
-  // Regex to find trailing and leading whitespaces
-  const auto wsRegex = std::regex("^ +| +$|( ) +");
-
-  // Regular expression for extracting key and value separated by '=' as two
-  // separate capture groups
-  const auto keyValueRegex = std::regex(
-      R"rgx([ \t]*([0-9a-zA-Z_\-\.+]+)[ \t]*=[ \t]*([0-9a-zA-Z_\-\.+]+).*$)rgx");
-
   // Reads a simple config file containing a single <key>=<value> pair per line
   // and returns the content as an unordered map
   std::unordered_map<std::string, std::string> paramMap;
   std::string line;
   while (std::getline(input, line)) {
     // Remove trailing and leading whitespaces
-    line = std::regex_replace(line, wsRegex, "$1");
+    line = trim(line);
+
     // Skip this line if it is marked as a comment
-    if (line.rfind('#') == 0 || line.empty())
+    if (line.find('#') == 0 || line.empty())
       continue;
 
-    // Extract key and value
-    std::smatch smatch;
-    if (std::regex_search(line, smatch, keyValueRegex)) {
-      if (smatch.size() < 3) {
-        lsMessage::getInstance()
-            .addError(std::string("Malformed line: `") + line +
-                      std::string("`"))
-            .print();
-        continue;
-      }
+    auto splitPos = line.find("=");
+    if (splitPos == std::string::npos)
+      continue;
 
-      paramMap.insert({smatch[1], smatch[2]});
-    }
+    auto keyStr = trim(line.substr(0, splitPos));
+    auto valStr = trim(line.substr(splitPos + 1, line.length()));
+
+    if (keyStr.empty() || valStr.empty())
+      continue;
+
+    paramMap.insert({keyStr, valStr});
   }
   return paramMap;
 }
