@@ -13,7 +13,7 @@
 #include "TrenchGeometry.hpp"
 #include "Utils.hpp"
 
-template <typename NumericType> struct Parameters {
+template <typename NumericType> class Parameters {
   std::string filename = "data.csv";
 
   std::vector<NumericType> aspectRatios;
@@ -22,7 +22,29 @@ template <typename NumericType> struct Parameters {
 
   bool taperBothSidewalls = true;
 
-  void fromMap(std::unordered_map<std::string, std::string> &m) {
+  // Private constructor, such that the parameters object can only be
+  // constructed using the `fromMap` function.
+  Parameters(std::string &&passedFilename,
+             std::vector<NumericType> &&passedAspectRatios,
+             std::vector<NumericType> &&passedTaperAngles,
+             std::vector<NumericType> &&passedStickingProbabilities,
+             bool passedTaperBothSidewalls)
+      : filename(std::move(passedFilename)),
+        aspectRatios(std::move(passedAspectRatios)),
+        taperAngles(std::move(passedTaperAngles)),
+        stickingProbabilities(std::move(passedStickingProbabilities)),
+        taperBothSidewalls(passedTaperBothSidewalls) {}
+
+public:
+  static Parameters fromMap(std::unordered_map<std::string, std::string> &map) {
+    // Local variable instances
+    std::string filename = "data.csv";
+    std::vector<NumericType> aspectRatios;
+    std::vector<NumericType> taperAngles;
+    std::vector<NumericType> stickingProbabilities;
+    bool taperBothSidewalls = true;
+
+    // Special conversion functions
     static auto strictlyPositive = [](const std::string &s) -> NumericType {
       auto value = Utils::convert<NumericType>(s);
       if (value <= 0.0)
@@ -48,8 +70,9 @@ template <typename NumericType> struct Parameters {
       return false;
     };
 
+    // Now assign the items
     Utils::AssignItems(
-        m,
+        map,
         Utils::Item{"filename", filename,
                     [](const std::string &s) { return s; }},
         Utils::Item{"taperAngles", taperAngles, &Utils::toVector<NumericType>},
@@ -69,6 +92,10 @@ template <typename NumericType> struct Parameters {
             taperBothSidewalls,
             toBool,
         });
+
+    return Parameters(std::move(filename), std::move(aspectRatios),
+                      std::move(taperAngles), std::move(stickingProbabilities),
+                      taperBothSidewalls);
   }
 
   std::size_t getTotalCombinations() const {
@@ -104,15 +131,16 @@ int main(const int argc, const char *const *const argv) {
 
   int numberOfSamples = 512;
 
-  Parameters<NumericType> params;
+  std::unordered_map<std::string, std::string> config;
+
   if (argc > 1) {
-    auto config = Utils::readConfigFile(argv[1]);
+    config = Utils::readConfigFile(argv[1]);
     if (config.empty()) {
       lsMessage::getInstance().addError("Empty config provided").print();
       return EXIT_FAILURE;
     }
-    params.fromMap(config);
   }
+  auto params = Parameters<NumericType>::fromMap(config);
   params.print();
   return 0;
 
