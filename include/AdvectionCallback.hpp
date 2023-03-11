@@ -2,6 +2,7 @@
 #define ADVECTION_CALLBACK_HPP
 
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 
 #include <psAdvectionCallback.hpp>
@@ -10,7 +11,7 @@
 
 #include <lsWriter.hpp>
 
-// #include "Utils.hpp"
+namespace fs = std::filesystem;
 
 template <typename NumericType, int D, typename FeatureExtractionType,
           typename WriterType>
@@ -70,8 +71,9 @@ public:
       name << prefixData[i] << "_";
     name << counter;
     // Utils::printSurface(domain->getLevelSets()->back(), name.str() + ".vtp");
-    lsWriter<NumericType, D>(domain->getLevelSets()->back(),
-                             name.str() + ".lvst")
+    lsWriter<NumericType, D>(
+        domain->getLevelSets()->back(),
+        (fs::path("lvst") / (name.str() + ".lvst")).string())
         .apply();
     std::cout << "-- " << counter << '\n';
 
@@ -97,6 +99,8 @@ public:
     if (passedProcessTime == 0.) {
       if (!featureExtraction)
         return false;
+      if (!fs::exists("lvst"))
+        fs::create_directories("lvst");
       apply();
       ++counter;
       lastUpdateTime = 0.;

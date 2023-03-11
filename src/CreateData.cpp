@@ -18,6 +18,7 @@ template <typename NumericType> class Parameters {
   const std::vector<NumericType> aspectRatios;
   const std::vector<NumericType> taperAngles;
   const std::vector<NumericType> stickingProbabilities;
+  const std::size_t timeSteps;
   const bool symmetrical = true;
 
   // Private constructor, such that the parameters object can only be
@@ -26,12 +27,12 @@ template <typename NumericType> class Parameters {
              std::vector<NumericType> &&passedAspectRatios,
              std::vector<NumericType> &&passedTaperAngles,
              std::vector<NumericType> &&passedStickingProbabilities,
-             bool passedSymmetrical)
+             std::size_t passedTimeSteps, bool passedSymmetrical)
       : filename(std::move(passedFilename)),
         aspectRatios(std::move(passedAspectRatios)),
         taperAngles(std::move(passedTaperAngles)),
         stickingProbabilities(std::move(passedStickingProbabilities)),
-        symmetrical(passedSymmetrical) {}
+        timeSteps(passedTimeSteps), symmetrical(passedSymmetrical) {}
 
 public:
   // Factory pattern to construct an instance of the class from a map
@@ -42,6 +43,7 @@ public:
     std::vector<NumericType> aspectRatios;
     std::vector<NumericType> taperAngles;
     std::vector<NumericType> stickingProbabilities;
+    std::size_t timeSteps = 10;
     bool symmetrical = true;
 
     // Now assign the items
@@ -64,6 +66,7 @@ public:
                   NumericType, decltype(&Utils::toUnitRange<NumericType>)>(
                   s, &Utils::toUnitRange<NumericType>);
             }},
+        Utils::Item{"timeSteps", timeSteps, &Utils::toStrictlyPositive<int>},
         Utils::Item{
             "symmetrical",
             symmetrical,
@@ -72,7 +75,7 @@ public:
 
     return Parameters(std::move(filename), std::move(aspectRatios),
                       std::move(taperAngles), std::move(stickingProbabilities),
-                      symmetrical);
+                      timeSteps, symmetrical);
   }
 
   std::size_t getNumberOfCombinations() const {
@@ -81,6 +84,10 @@ public:
   }
 
   std::string getFilename() const { return filename; }
+
+  std::size_t getTimeSteps() const { return timeSteps; }
+
+  bool getSymmetrical() const { return symmetrical; }
 
   void print() const {
     std::cout << "Parameters: " << std::endl;
@@ -93,6 +100,7 @@ public:
               << Utils::join(stickingProbabilities.begin(),
                              stickingProbabilities.end())
               << "]\n";
+    std::cout << "- timeSteps: " << timeSteps << "\n";
     std::cout << "- symmetrical: " << ((symmetrical) ? "true\n" : "false\n");
     std::cout << "  -> total number of combinations: "
               << getNumberOfCombinations() << '\n';
@@ -167,7 +175,7 @@ public:
 template <typename NumericType>
 std::string createHeader(const int numberOfSamples,
                          const std::vector<NumericType> &sampleLocations,
-                         const int inputDimension) {
+                         const int inputDimension, bool symmetrical) {
   std::string header =
       "aspectRatio,leftTaperAngle,stickingProbability,normalizedTime";
   for (int i = 0; i < numberOfSamples; ++i) {
@@ -176,7 +184,8 @@ std::string createHeader(const int numberOfSamples,
   header += "\nDiameters are normalized to the trench width.\nSample positions "
             "along vertical axis (normalized to trench depth + trench width):";
   header += "\n!" + Utils::join(sampleLocations.begin(), sampleLocations.end());
-  header += "\n!InputDimension=" + std::to_string(inputDimension);
+  header += "\n!InputDimension=" + std::to_string(inputDimension) +
+            ",Symmetrical=" + std::to_string(symmetrical);
   return header;
 }
 
@@ -224,7 +233,8 @@ int main(const int argc, const char *const *const argv) {
       lsSmartPointer<psCSVWriter<NumericType>>::New(params.getFilename());
 
   // Creation of a descriptive header
-  auto header = createHeader(numberOfSamples, *sampleLocations, inputDimension);
+  auto header = createHeader(numberOfSamples, *sampleLocations, inputDimension,
+                             params.getSymmetrical());
   writer->setHeader(header);
   writer->initialize();
 
@@ -249,20 +259,21 @@ int main(const int argc, const char *const *const argv) {
     NumericType timeScale = 1.0 / stickingProbability;
 
     // Ensure that we always have 11 samples
-    NumericType maxTime = 10.0;
-    NumericType extractionInterval = trenchTopWidth / maxTime;
+    auto maxTime = params.getTimeSteps();
+    NumericType intervalLength = 1.0 / (maxTime - 1);
 
     featureExtraction->setTrenchDimensions(trenchDepth, trenchTopWidth);
 
     auto advectionCallback = lsSmartPointer<AdvectionCallback<
         NumericType, D, decltype(featureExtraction)::element_type,
-        decltype(writer)::element_type>>::New(timeScale, extractionInterval);
+        decltype(writer)::element_type>>::New(timeScale,
+                                              trenchTopWidth * intervalLength);
 
     advectionCallback->setFeatureExtraction(featureExtraction);
     advectionCallback->setPrefixData(std::vector<NumericType>{
         aspectRatio, leftTaperAngle, stickingProbability});
     advectionCallback->setWriter(writer);
-    advectionCallback->setModifiers(1.0 / maxTime, 1.0);
+    advectionCallback->setModifiers(intervalLength, 1.0);
 
     auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
     geometry->insertNextLevelSet(trench);
