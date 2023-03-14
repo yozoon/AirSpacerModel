@@ -90,8 +90,9 @@ createPlane(const hrleGrid<D> &grid, const std::array<NumericType, 3> &origin) {
 template <class NumericType, int D>
 lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
     const hrleGrid<D> &grid, const std::array<NumericType, 3> &origin,
-    const NumericType passedTrenchDepth, const NumericType trenchTopWidth,
-    const NumericType leftTaperAngle, const NumericType rightTaperAngle) {
+    const NumericType passedTrenchDepth, const NumericType trenchWidth,
+    const NumericType leftTaperAngle, const NumericType rightTaperAngle,
+    bool fixTopWidth = true) {
 
   const NumericType gridDelta = grid.getGridDelta();
 
@@ -101,8 +102,8 @@ lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
       std::tan(rightTaperAngle * Utils::PI<NumericType> / 180.);
 
   NumericType trenchDepth = passedTrenchDepth;
-  if (tanLeft + tanRight > 0) {
-    NumericType intersectionDepth = trenchTopWidth / (tanLeft + tanRight);
+  if (fixTopWidth && tanLeft + tanRight > 0) {
+    NumericType intersectionDepth = trenchWidth / (tanLeft + tanRight);
     if (intersectionDepth < trenchDepth) {
       lsMessage::getInstance()
           .addWarning(
@@ -112,10 +113,25 @@ lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
           .print();
       trenchDepth = intersectionDepth;
     }
+  } else if (!fixTopWidth && tanLeft + tanRight < 0) {
+    NumericType intersectionDepth = -trenchWidth / (tanLeft + tanRight);
+    if (intersectionDepth < trenchDepth) {
+      lsMessage::getInstance()
+          .addWarning(
+              "createTrenchStamp: due to the provided tapering angles, the "
+              "trench would close below the top surface.")
+          .print();
+      return nullptr;
+    }
   }
 
   const NumericType leftOffset = tanLeft * trenchDepth;
+  const NumericType leftTopOffset = fixTopWidth ? 0.0 : leftOffset;
+  const NumericType leftBottomOffset = fixTopWidth ? leftOffset : 0.0;
+
   const NumericType rightOffset = tanRight * trenchDepth;
+  const NumericType rightTopOffset = fixTopWidth ? 0.0 : rightOffset;
+  const NumericType rightBottomOffset = fixTopWidth ? rightOffset : 0.0;
 
   auto stamp = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
 
@@ -126,10 +142,10 @@ lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
       std::array<NumericType, 3> node = {0., 0., 0.};
       mesh->insertNextNode(node);
     }
-    mesh->nodes[0][0] = origin[0] - trenchTopWidth / 2. + leftOffset;
-    mesh->nodes[1][0] = origin[0] + trenchTopWidth / 2. - rightOffset;
-    mesh->nodes[2][0] = origin[0] + trenchTopWidth / 2.;
-    mesh->nodes[3][0] = origin[0] - trenchTopWidth / 2.;
+    mesh->nodes[0][0] = origin[0] - trenchWidth / 2. + leftBottomOffset;
+    mesh->nodes[1][0] = origin[0] + trenchWidth / 2. - rightBottomOffset;
+    mesh->nodes[2][0] = origin[0] + trenchWidth / 2. + rightTopOffset;
+    mesh->nodes[3][0] = origin[0] - trenchWidth / 2. - leftTopOffset;
 
     mesh->nodes[0][1] = origin[1] - trenchDepth;
     mesh->nodes[1][1] = origin[1] - trenchDepth;
@@ -147,35 +163,36 @@ lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
       std::array<NumericType, 3> node = {0., 0., 0.};
       mesh->insertNextNode(node);
     }
-    mesh->nodes[0][0] = origin[0] - trenchTopWidth / 2. + leftOffset;
+
+    mesh->nodes[0][0] = origin[0] - trenchWidth / 2. + leftBottomOffset;
     mesh->nodes[0][1] = origin[1] + bounds[2] - gridDelta;
     mesh->nodes[0][2] = origin[2] - trenchDepth;
 
-    mesh->nodes[1][0] = origin[0] + trenchTopWidth / 2. - rightOffset;
+    mesh->nodes[1][0] = origin[0] + trenchWidth / 2. - rightBottomOffset;
     mesh->nodes[1][1] = origin[1] + bounds[2] - gridDelta;
     mesh->nodes[1][2] = origin[2] - trenchDepth;
 
-    mesh->nodes[2][0] = origin[0] + trenchTopWidth / 2. - rightOffset;
+    mesh->nodes[2][0] = origin[0] + trenchWidth / 2. - rightBottomOffset;
     mesh->nodes[2][1] = origin[1] + bounds[3] + gridDelta;
     mesh->nodes[2][2] = origin[2] - trenchDepth;
 
-    mesh->nodes[3][0] = origin[0] - trenchTopWidth / 2. + leftOffset;
+    mesh->nodes[3][0] = origin[0] - trenchWidth / 2. + leftBottomOffset;
     mesh->nodes[3][1] = origin[1] + bounds[3] + gridDelta;
     mesh->nodes[3][2] = origin[2] - trenchDepth;
 
-    mesh->nodes[4][0] = origin[0] - trenchTopWidth / 2.;
+    mesh->nodes[4][0] = origin[0] - trenchWidth / 2. - leftTopOffset;
     mesh->nodes[4][1] = origin[1] + bounds[2] - gridDelta;
     mesh->nodes[4][2] = origin[2];
 
-    mesh->nodes[5][0] = origin[0] + trenchTopWidth / 2.;
+    mesh->nodes[5][0] = origin[0] + trenchWidth / 2. + rightTopOffset;
     mesh->nodes[5][1] = origin[1] + bounds[2] - gridDelta;
     mesh->nodes[5][2] = origin[2];
 
-    mesh->nodes[6][0] = origin[0] + trenchTopWidth / 2.;
+    mesh->nodes[6][0] = origin[0] + trenchWidth / 2. + rightTopOffset;
     mesh->nodes[6][1] = origin[1] + bounds[3] + gridDelta;
     mesh->nodes[6][2] = origin[2];
 
-    mesh->nodes[7][0] = origin[0] - trenchTopWidth / 2.;
+    mesh->nodes[7][0] = origin[0] - trenchWidth / 2. - leftTopOffset;
     mesh->nodes[7][1] = origin[1] + bounds[3] + gridDelta;
     mesh->nodes[7][2] = origin[2];
 
@@ -208,7 +225,7 @@ makeTrench(const NumericType gridDelta, const NumericType xExtent,
            const NumericType yExtent, const std::array<NumericType, 3> &origin,
            const NumericType trenchTopWidth, const NumericType trenchDepth,
            const NumericType leftTaperAngle, const NumericType rightTaperAngle,
-           const bool periodicBoundary) {
+           const bool periodicBoundary, const bool fixTopWidth = true) {
 
   const auto [leftBound, rightBound] = calculateHorizontalTrenchBounds(
       trenchTopWidth, trenchDepth, leftTaperAngle, rightTaperAngle);
@@ -232,11 +249,11 @@ makeTrench(const NumericType gridDelta, const NumericType xExtent,
 
   auto cutout = createTrenchStamp<NumericType, D>(
       grid, origin, trenchDepth, trenchTopWidth, leftTaperAngle,
-      rightTaperAngle);
-
-  lsBooleanOperation<NumericType, D>(
-      substrate, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
-      .apply();
+      rightTaperAngle, fixTopWidth);
+  if (cutout)
+    lsBooleanOperation<NumericType, D>(
+        substrate, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+        .apply();
 
   return substrate;
 }

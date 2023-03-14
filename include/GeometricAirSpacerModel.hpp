@@ -143,12 +143,18 @@ public:
         .print();
 #endif
 
+    const bool fixTopWidth = true;
+
     auto outerTrench = createTrenchStamp<NumericType, D>(
         grid, origin, initialTrenchDepth, initialTrenchTopWidth, leftTaperAngle,
-        0.0);
+        0.0, fixTopWidth);
 
     auto innerTrench = createTrenchStamp<NumericType, D>(
-        grid, origin, trenchDepth, trenchTopWidth, leftTaperAngle, 0.0);
+        grid, origin, trenchDepth, trenchTopWidth, leftTaperAngle, 0.0,
+        fixTopWidth);
+
+    if (!outerTrench || !innerTrench)
+      return;
 
     // Copy the substrate into two new layers
     auto conformalLayer =
