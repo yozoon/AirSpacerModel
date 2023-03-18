@@ -21,6 +21,11 @@ namespace Utils {
 template <typename NumericType>
 inline constexpr NumericType PI = std::acos(NumericType{-1});
 
+template <typename NumericType>
+inline constexpr NumericType deg2rad(NumericType deg) {
+  return deg * PI<NumericType> / NumericType{180.};
+}
+
 template <typename NumericType, int D>
 void printSurface(lsSmartPointer<lsDomain<NumericType, D>> levelset,
                   const std::string &filename) {

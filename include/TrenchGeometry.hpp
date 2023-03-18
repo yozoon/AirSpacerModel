@@ -96,10 +96,8 @@ lsSmartPointer<lsDomain<NumericType, D>> createTrenchStamp(
 
   const NumericType gridDelta = grid.getGridDelta();
 
-  const NumericType tanLeft =
-      std::tan(leftTaperAngle * Utils::PI<NumericType> / 180.);
-  const NumericType tanRight =
-      std::tan(rightTaperAngle * Utils::PI<NumericType> / 180.);
+  const NumericType tanLeft = std::tan(Utils::deg2rad(leftTaperAngle));
+  const NumericType tanRight = std::tan(Utils::deg2rad(rightTaperAngle));
 
   NumericType trenchDepth = passedTrenchDepth;
   if (fixTopWidth && tanLeft + tanRight > 0) {

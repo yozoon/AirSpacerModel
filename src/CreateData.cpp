@@ -14,25 +14,30 @@
 #include "Utils.hpp"
 
 template <typename NumericType> class Parameters {
+public:
   const std::string filename = "data.csv";
   const std::vector<NumericType> aspectRatios;
   const std::vector<NumericType> taperAngles;
   const std::vector<NumericType> stickingProbabilities;
   const std::size_t timeSteps;
-  const bool symmetrical = true;
+  const bool symmetrical;
+  const bool fixTopWidth;
 
+private:
   // Private constructor, such that the parameters object can only be
   // constructed using the `fromMap` function.
   Parameters(std::string &&passedFilename,
              std::vector<NumericType> &&passedAspectRatios,
              std::vector<NumericType> &&passedTaperAngles,
              std::vector<NumericType> &&passedStickingProbabilities,
-             std::size_t passedTimeSteps, bool passedSymmetrical)
+             std::size_t passedTimeSteps, bool passedSymmetrical,
+             bool passedFixTopWidth)
       : filename(std::move(passedFilename)),
         aspectRatios(std::move(passedAspectRatios)),
         taperAngles(std::move(passedTaperAngles)),
         stickingProbabilities(std::move(passedStickingProbabilities)),
-        timeSteps(passedTimeSteps), symmetrical(passedSymmetrical) {}
+        timeSteps(passedTimeSteps), symmetrical(passedSymmetrical),
+        fixTopWidth(passedFixTopWidth) {}
 
 public:
   // Factory pattern to construct an instance of the class from a map
@@ -45,6 +50,7 @@ public:
     std::vector<NumericType> stickingProbabilities;
     std::size_t timeSteps = 10;
     bool symmetrical = true;
+    bool fixTopWidth = true;
 
     // Now assign the items
     Utils::AssignItems(
@@ -71,11 +77,16 @@ public:
             "symmetrical",
             symmetrical,
             Utils::toBool,
+        },
+        Utils::Item{
+            "fixTopWidth",
+            fixTopWidth,
+            Utils::toBool,
         });
 
     return Parameters(std::move(filename), std::move(aspectRatios),
                       std::move(taperAngles), std::move(stickingProbabilities),
-                      timeSteps, symmetrical);
+                      timeSteps, symmetrical, fixTopWidth);
   }
 
   std::size_t getNumberOfCombinations() const {
@@ -83,11 +94,7 @@ public:
            stickingProbabilities.size();
   }
 
-  std::string getFilename() const { return filename; }
-
-  std::size_t getTimeSteps() const { return timeSteps; }
-
-  bool getSymmetrical() const { return symmetrical; }
+  int getInputDimension() const { return 4; }
 
   void print() const {
     std::cout << "Parameters: " << std::endl;
@@ -102,6 +109,7 @@ public:
               << "]\n";
     std::cout << "- timeSteps: " << timeSteps << "\n";
     std::cout << "- symmetrical: " << ((symmetrical) ? "true\n" : "false\n");
+    std::cout << "- fixTopWidth: " << ((fixTopWidth) ? "true\n" : "false\n");
     std::cout << "  -> total number of combinations: "
               << getNumberOfCombinations() << '\n';
   }
@@ -195,7 +203,7 @@ int main(const int argc, const char *const *const argv) {
 
   std::array<NumericType, 3> origin{0.};
   NumericType gridDelta = 0.2;
-  NumericType trenchTopWidth = 4.; // -> 20 grid points
+  NumericType trenchWidth = 4.; // -> 20 grid points
 
   int numberOfSamples = 512;
 
@@ -214,7 +222,7 @@ int main(const int argc, const char *const *const argv) {
   // The data we are going to store consists of stickingProbability,
   // taperAngle, time and the sampled geometry descriptors as provided by the
   // feature extraction.
-  int inputDimension = 4;
+  int inputDimension = params.getInputDimension();
 
   // Instantiate the featureExtraction
   auto featureExtraction =
@@ -229,45 +237,59 @@ int main(const int argc, const char *const *const argv) {
   // the trench depth at each timestep)
   auto sampleLocations = featureExtraction->getSampleLocations();
 
-  auto writer =
-      lsSmartPointer<psCSVWriter<NumericType>>::New(params.getFilename());
+  auto writer = lsSmartPointer<psCSVWriter<NumericType>>::New(params.filename);
 
   // Creation of a descriptive header
   auto header = createHeader(numberOfSamples, *sampleLocations, inputDimension,
-                             params.getSymmetrical());
+                             params.symmetrical);
   writer->setHeader(header);
   writer->initialize();
+
+  const auto totalNumberOfCombinations = params.getNumberOfCombinations();
 
   unsigned count = 1;
   for (const auto [aspectRatio, leftTaperAngle, rightTaperAngle,
                    stickingProbability] : params) {
     // Calculate the depth of the trench using the aspect ratio
-    NumericType trenchDepth = trenchTopWidth * aspectRatio;
+    NumericType trenchDepth = trenchWidth * aspectRatio;
 
-    NumericType xExtent = 2.0 * trenchTopWidth;
+    NumericType xExtent = 2.0 * trenchWidth;
     // Now that we know all geometry parameters generate the geometry
     auto trench = makeTrench<NumericType, D>(
-        gridDelta, xExtent, 10., origin, trenchTopWidth, trenchDepth,
-        leftTaperAngle, rightTaperAngle, false /* no periodic boundary*/);
+        gridDelta, xExtent, 10., origin, trenchWidth, trenchDepth,
+        leftTaperAngle, rightTaperAngle, false /* no periodic boundary*/,
+        params.fixTopWidth);
 
-    std::cout << count++ << '/' << params.getNumberOfCombinations()
-              << std::endl;
+    std::cout << count++ << '/' << totalNumberOfCombinations << std::endl;
 
     // Normalize the time scale to the sticking probability, so that we
     // get the same top layer thickness for different sticking
     // probabilities.
     NumericType timeScale = 1.0 / stickingProbability;
 
-    // Ensure that we always have 11 samples
-    auto maxTime = params.getTimeSteps();
+    auto maxTime = params.timeSteps;
     NumericType intervalLength = 1.0 / (maxTime - 1);
 
-    featureExtraction->setTrenchDimensions(trenchDepth, trenchTopWidth);
+    featureExtraction->setTrenchDimensions(trenchDepth, trenchWidth);
+
+    NumericType trenchTopWidth = trenchWidth;
+    if (!params.fixTopWidth) {
+      trenchTopWidth +=
+          trenchDepth *
+          (std::tan(Utils::deg2rad(std::max(NumericType{0.}, leftTaperAngle))) +
+           std::tan(
+               Utils::deg2rad(std::max(NumericType{0.}, rightTaperAngle))));
+    }
+
+    // Since we assume a top rate of 1, the maximum time it takes for the
+    // trench to close is equal to the trench top width (if sticking
+    // probability 1, otherwise the time until pinchoff will be even less)
+    NumericType processDuration = trenchTopWidth;
 
     auto advectionCallback = lsSmartPointer<AdvectionCallback<
         NumericType, D, decltype(featureExtraction)::element_type,
         decltype(writer)::element_type>>::New(timeScale,
-                                              trenchTopWidth * intervalLength);
+                                              processDuration * intervalLength);
 
     advectionCallback->setFeatureExtraction(featureExtraction);
     advectionCallback->setPrefixData(std::vector<NumericType>{
@@ -290,16 +312,11 @@ int main(const int argc, const char *const *const argv) {
 
     processModel->setAdvectionCallback(advectionCallback);
 
-    // Since we assume a top rate of 1, the maximum time it takes for the
-    // trench to close is equal to the trench top width (if sticking
-    // probability 1, otherwise the time until pinchoff will be even less)
-    NumericType processDuration = trenchTopWidth / stickingProbability;
-
     psProcess<NumericType, D> process;
     process.setDomain(geometry);
     process.setProcessModel(processModel);
     process.setNumberOfRaysPerPoint(2000);
-    process.setProcessDuration(processDuration);
+    process.setProcessDuration(processDuration / stickingProbability);
 
     // Run the process
     process.apply();
