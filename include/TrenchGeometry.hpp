@@ -12,18 +12,20 @@
 
 template <class NumericType>
 std::tuple<NumericType, NumericType> calculateHorizontalTrenchBounds(
-    const NumericType trenchTopWidth, const NumericType trenchDepth,
-    const NumericType leftTaperAngle, const NumericType rightTaperAngle) {
-  const NumericType tanLeft =
-      std::tan(-leftTaperAngle * Utils::PI<NumericType> / 180.);
-  const NumericType tanRight =
-      std::tan(-rightTaperAngle * Utils::PI<NumericType> / 180.);
+    const NumericType trenchWidth, const NumericType trenchDepth,
+    const NumericType leftTaperAngle, const NumericType rightTaperAngle,
+    const bool fixTopWidth) {
 
-  const NumericType leftOffset = tanLeft * trenchDepth;
-  const NumericType rightOffset = tanRight * trenchDepth;
+  const NumericType tanLeft = -std::tan(Utils::deg2rad(leftTaperAngle));
+  const NumericType tanRight = -std::tan(Utils::deg2rad(rightTaperAngle));
 
-  return {-trenchTopWidth / 2 - std::max(leftOffset, NumericType{0.}),
-          trenchTopWidth / 2 + std::max(rightOffset, NumericType{0.})};
+  const NumericType leftOffset =
+      fixTopWidth ? tanLeft * trenchDepth : -tanLeft * trenchDepth;
+  const NumericType rightOffset =
+      fixTopWidth ? tanRight * trenchDepth : -tanRight * trenchDepth;
+
+  return {-trenchWidth / 2 - std::max(leftOffset, NumericType{0.}),
+          trenchWidth / 2 + std::max(rightOffset, NumericType{0.})};
 };
 
 template <class NumericType, int D>
@@ -226,7 +228,8 @@ makeTrench(const NumericType gridDelta, const NumericType xExtent,
            const bool periodicBoundary, const bool fixTopWidth = true) {
 
   const auto [leftBound, rightBound] = calculateHorizontalTrenchBounds(
-      trenchTopWidth, trenchDepth, leftTaperAngle, rightTaperAngle);
+      trenchTopWidth, trenchDepth, leftTaperAngle, rightTaperAngle,
+      fixTopWidth);
 
   NumericType requiredExtent =
       2.0 * std::max(-leftBound, rightBound) + 2.0 * gridDelta;
@@ -252,6 +255,8 @@ makeTrench(const NumericType gridDelta, const NumericType xExtent,
     lsBooleanOperation<NumericType, D>(
         substrate, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
         .apply();
+  else
+    return nullptr;
 
   return substrate;
 }

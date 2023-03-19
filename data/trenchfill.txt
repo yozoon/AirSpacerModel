@@ -1,4 +1,4 @@
-# Configuration file for the trench fill application
+# Configuration file for the AirSpacerEmulation and AirSpacerSimulation examples
 filename = trenchfill.csv
 aspectRatios = 100, 70, 50, 30, 10, 5
 taperAngles = 0.0, 5.0, 10.0, 15.0, 20.0
@@ -6,4 +6,3 @@ stickingProbabilities = 0.1, 0.07, 0.04, 0.01
 timeSteps = 11
 symmetrical = true
 fixTopWidth = false
-

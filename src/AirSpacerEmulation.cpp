@@ -83,8 +83,9 @@ int main(int argc, const char *const *const argv) {
   const NumericType xExtent = initialTrenchTopWidth + 4.0;
   const NumericType yExtent = 5.0;
 
-  const auto [leftBound, rightBound] = calculateHorizontalTrenchBounds(
-      initialTrenchTopWidth, initialTrenchDepth, params.leftTaperAngle, 0.0);
+  const auto [leftBound, rightBound] =
+      calculateHorizontalTrenchBounds(initialTrenchTopWidth, initialTrenchDepth,
+                                      params.leftTaperAngle, 0.0, true);
 
   NumericType requiredExtent =
       2.0 * std::max(-leftBound, rightBound) + 2.0 * gridDelta;

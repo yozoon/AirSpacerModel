@@ -1,6 +1,4 @@
-#include <algorithm>
-#include <iostream>
-#include <vector>
+#include <array>
 
 #include <lsMessage.hpp>
 #include <lsSmartPointer.hpp>
@@ -11,174 +9,8 @@
 #include "AdvectionCallback.hpp"
 #include "FeatureExtraction.hpp"
 #include "TrenchGeometry.hpp"
-#include "Utils.hpp"
 
-template <typename NumericType> class Parameters {
-public:
-  const std::string filename = "data.csv";
-  const std::vector<NumericType> aspectRatios;
-  const std::vector<NumericType> taperAngles;
-  const std::vector<NumericType> stickingProbabilities;
-  const std::size_t timeSteps;
-  const bool symmetrical;
-  const bool fixTopWidth;
-
-private:
-  // Private constructor, such that the parameters object can only be
-  // constructed using the `fromMap` function.
-  Parameters(std::string &&passedFilename,
-             std::vector<NumericType> &&passedAspectRatios,
-             std::vector<NumericType> &&passedTaperAngles,
-             std::vector<NumericType> &&passedStickingProbabilities,
-             std::size_t passedTimeSteps, bool passedSymmetrical,
-             bool passedFixTopWidth)
-      : filename(std::move(passedFilename)),
-        aspectRatios(std::move(passedAspectRatios)),
-        taperAngles(std::move(passedTaperAngles)),
-        stickingProbabilities(std::move(passedStickingProbabilities)),
-        timeSteps(passedTimeSteps), symmetrical(passedSymmetrical),
-        fixTopWidth(passedFixTopWidth) {}
-
-public:
-  // Factory pattern to construct an instance of the class from a map
-  static Parameters
-  fromMap(const std::unordered_map<std::string, std::string> &map) {
-    // Local variable instances
-    std::string filename = "data.csv";
-    std::vector<NumericType> aspectRatios;
-    std::vector<NumericType> taperAngles;
-    std::vector<NumericType> stickingProbabilities;
-    std::size_t timeSteps = 10;
-    bool symmetrical = true;
-    bool fixTopWidth = true;
-
-    // Now assign the items
-    Utils::AssignItems(
-        map,
-        Utils::Item{"filename", filename,
-                    [](const std::string &s) { return s; }},
-        Utils::Item{"taperAngles", taperAngles, &Utils::toVector<NumericType>},
-        Utils::Item{"aspectRatios", aspectRatios,
-                    [](const std::string &s) -> std::vector<NumericType> {
-                      return Utils::toVector<
-                          NumericType,
-                          decltype(&Utils::toStrictlyPositive<NumericType>)>(
-                          s, &Utils::toStrictlyPositive<NumericType>);
-                    }},
-        Utils::Item{
-            "stickingProbabilities", stickingProbabilities,
-            [](const std::string &s) -> std::vector<NumericType> {
-              return Utils::toVector<
-                  NumericType, decltype(&Utils::toUnitRange<NumericType>)>(
-                  s, &Utils::toUnitRange<NumericType>);
-            }},
-        Utils::Item{"timeSteps", timeSteps, &Utils::toStrictlyPositive<int>},
-        Utils::Item{
-            "symmetrical",
-            symmetrical,
-            Utils::toBool,
-        },
-        Utils::Item{
-            "fixTopWidth",
-            fixTopWidth,
-            Utils::toBool,
-        });
-
-    return Parameters(std::move(filename), std::move(aspectRatios),
-                      std::move(taperAngles), std::move(stickingProbabilities),
-                      timeSteps, symmetrical, fixTopWidth);
-  }
-
-  std::size_t getNumberOfCombinations() const {
-    return aspectRatios.size() * taperAngles.size() *
-           stickingProbabilities.size();
-  }
-
-  int getInputDimension() const { return 4; }
-
-  void print() const {
-    std::cout << "Parameters: " << std::endl;
-    std::cout << "- filename: '" << filename << "'\n";
-    std::cout << "- aspectRatios: ["
-              << Utils::join(aspectRatios.begin(), aspectRatios.end()) << "]\n";
-    std::cout << "- taperAngles: ["
-              << join(taperAngles.begin(), taperAngles.end()) << "]\n";
-    std::cout << "- stickingProbabilities: ["
-              << Utils::join(stickingProbabilities.begin(),
-                             stickingProbabilities.end())
-              << "]\n";
-    std::cout << "- timeSteps: " << timeSteps << "\n";
-    std::cout << "- symmetrical: " << ((symmetrical) ? "true\n" : "false\n");
-    std::cout << "- fixTopWidth: " << ((fixTopWidth) ? "true\n" : "false\n");
-    std::cout << "  -> total number of combinations: "
-              << getNumberOfCombinations() << '\n';
-  }
-
-  struct const_iterator {
-    using iter_t = typename std::vector<NumericType>::const_iterator;
-    iter_t aspectRatioIterator;
-    iter_t taperAngleIterator;
-    iter_t stickingProbabilityIterator;
-
-    const std::vector<NumericType> &aspectRatios;
-    const std::vector<NumericType> &taperAngles;
-    const std::vector<NumericType> &stickingProbabilities;
-    const bool symmetrical;
-
-    const_iterator(iter_t passedAspectRatioIterator,
-                   iter_t passedTaperAngleIterator,
-                   iter_t passedStickingProbabilityIterator,
-                   const std::vector<NumericType> &passedAspectRatios,
-                   const std::vector<NumericType> &passedTaperAngles,
-                   const std::vector<NumericType> &passedStickingProbabilities,
-                   const bool passedSymmetrical)
-        : aspectRatioIterator(passedAspectRatioIterator),
-          taperAngleIterator(passedTaperAngleIterator),
-          stickingProbabilityIterator(passedStickingProbabilityIterator),
-          aspectRatios(passedAspectRatios), taperAngles(passedTaperAngles),
-          stickingProbabilities(passedStickingProbabilities),
-          symmetrical(passedSymmetrical) {}
-
-    // Return a tuple so that we can use structural bindings to unpack
-    std::tuple<NumericType, NumericType, NumericType, NumericType>
-    operator*() const {
-      return {*aspectRatioIterator, *taperAngleIterator,
-              (symmetrical ? *taperAngleIterator : 0.0),
-              *stickingProbabilityIterator};
-    };
-
-    const_iterator &operator++() {
-      if (++stickingProbabilityIterator == stickingProbabilities.cend()) {
-        if (++taperAngleIterator == taperAngles.cend()) {
-          if (++aspectRatioIterator == aspectRatios.cend()) {
-            return *this;
-          }
-          taperAngleIterator = taperAngles.cbegin();
-        }
-        stickingProbabilityIterator = stickingProbabilities.cbegin();
-      }
-      return *this;
-    };
-
-    bool operator!=(const const_iterator &other) const {
-      return (aspectRatioIterator != other.aspectRatioIterator) ||
-             (taperAngleIterator != other.taperAngleIterator) ||
-             (stickingProbabilityIterator != other.stickingProbabilityIterator);
-    }
-  };
-
-  const_iterator begin() const {
-    return const_iterator(aspectRatios.cbegin(), taperAngles.cbegin(),
-                          stickingProbabilities.cbegin(), aspectRatios,
-                          taperAngles, stickingProbabilities, symmetrical);
-  }
-
-  const_iterator end() const {
-    return const_iterator(aspectRatios.cend(), taperAngles.cend(),
-                          stickingProbabilities.cend(), aspectRatios,
-                          taperAngles, stickingProbabilities, symmetrical);
-  }
-};
+#include "CreateData.hpp"
 
 template <typename NumericType>
 std::string createHeader(const int numberOfSamples,
@@ -202,7 +34,8 @@ int main(const int argc, const char *const *const argv) {
   static constexpr int D = 2;
 
   std::array<NumericType, 3> origin{0.};
-  NumericType gridDelta = 0.2;
+  // NumericType gridDelta = 0.2;
+  const size_t numberOfCrossSectionPoints = 500;
   NumericType trenchWidth = 4.; // -> 20 grid points
 
   int numberOfSamples = 512;
@@ -247,39 +80,103 @@ int main(const int argc, const char *const *const argv) {
 
   const auto totalNumberOfCombinations = params.getNumberOfCombinations();
 
-  unsigned count = 1;
+  const bool fixTopWidth = params.fixTopWidth;
+  const auto maxTime = params.timeSteps;
+  const NumericType intervalLength = 1.0 / (maxTime - 1);
+
+  unsigned count = 0;
   for (const auto [aspectRatio, leftTaperAngle, rightTaperAngle,
                    stickingProbability] : params) {
-    // Calculate the depth of the trench using the aspect ratio
+
+    std::vector<NumericType> prefixData = {aspectRatio, leftTaperAngle,
+                                           stickingProbability};
+
+    // Calculate the depth of the trench based on the aspect ratio
     NumericType trenchDepth = trenchWidth * aspectRatio;
+    NumericType trenchTopWidth = trenchWidth;
+    NumericType trenchBottomWidth = trenchWidth;
 
-    NumericType xExtent = 2.0 * trenchWidth;
-    // Now that we know all geometry parameters generate the geometry
-    auto trench = makeTrench<NumericType, D>(
-        gridDelta, xExtent, 10., origin, trenchWidth, trenchDepth,
-        leftTaperAngle, rightTaperAngle, false /* no periodic boundary*/,
-        params.fixTopWidth);
+    // Calculate the offset caused by the tapering
+    const NumericType leftOffset =
+        trenchDepth * std::tan(Utils::deg2rad(leftTaperAngle));
+    const NumericType rightOffset =
+        trenchDepth * std::tan(Utils::deg2rad(rightTaperAngle));
 
-    std::cout << count++ << '/' << totalNumberOfCombinations << std::endl;
+    if (fixTopWidth) {
+      trenchBottomWidth = trenchBottomWidth - leftOffset - rightOffset;
+    } else {
+      trenchTopWidth = trenchTopWidth + leftOffset + rightOffset;
+    }
+
+    // The horizontal extent is defined by the trench top width, or the bottom
+    // width, whichever is larger. Extend it by 5%.
+    NumericType horizontalExtent =
+        std::max(trenchTopWidth, trenchBottomWidth) * 1.05;
+
+    NumericType crossSectionLength =
+        horizontalExtent - trenchTopWidth +
+        std::sqrt(leftOffset * leftOffset + trenchDepth * trenchDepth) +
+        std::sqrt(rightOffset * rightOffset + trenchDepth * trenchDepth) +
+        trenchBottomWidth;
+
+    // Calculate a grid delta such that the final geometry contains
+    // approximately `numberOfCrossSectionPoints` points
+    NumericType gridDelta = crossSectionLength / numberOfCrossSectionPoints;
+
+    std::cout << ++count << '/' << totalNumberOfCombinations << std::endl;
+    // If one of the widths is negative, the sidewalls intersect. This makes
+    // would make the definition of the aspect ratio quite questionable, thus we
+    // skip these cases alltogether.
+    if (trenchTopWidth <= gridDelta || trenchBottomWidth <= gridDelta) {
+      // TODO: create `timeSteps` number of rows in the csv file containing
+      // placeholder values or zeros (such that the regular grid is still
+      // preserved)
+      lsMessage::getInstance()
+          .addWarning("The provided taper angle would lead to intersecting "
+                      "sidewalls. Skipping configuration.")
+          .print();
+
+      std::vector<NumericType> dummyRow(numberOfSamples + prefixData.size() +
+                                        1);
+      const NumericType placeholderValue = 0.0;
+      // Copy the prefix data into the row vector
+      std::copy(prefixData.begin(), prefixData.end(), dummyRow.begin());
+
+      // Initialize the sample values with the placeholder value
+      std::generate(std::next(dummyRow.begin(), prefixData.size() + 1UL),
+                    dummyRow.end(), [=]() { return placeholderValue; });
+      for (int i = 0; i < params.timeSteps; ++i) {
+        // Update the timestep value in the dummy row
+        dummyRow[prefixData.size()] = i * intervalLength;
+        // Write the row to the file
+        writer->writeRow(dummyRow);
+      }
+      continue;
+    }
+
+    // Set the dimensions, so that the feature extraction can scale the values
+    // appropriately
+    featureExtraction->setTrenchDimensions(trenchDepth, trenchTopWidth);
+
+    // Generate the grid
+    auto grid = createGrid<NumericType, D>(origin, gridDelta, horizontalExtent,
+                                           10.0 /* initial vertical extent */,
+                                           false /* No periodic BC */);
+
+    // Create the inside of the trench that will be removed from the plane
+    auto cutout = createTrenchStamp<NumericType, D>(
+        grid, origin, trenchDepth, trenchTopWidth, leftTaperAngle,
+        rightTaperAngle, true);
+
+    auto trench = createPlane<NumericType, D>(grid, origin);
+    lsBooleanOperation<NumericType, D>(
+        trench, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+        .apply();
 
     // Normalize the time scale to the sticking probability, so that we
     // get the same top layer thickness for different sticking
     // probabilities.
     NumericType timeScale = 1.0 / stickingProbability;
-
-    auto maxTime = params.timeSteps;
-    NumericType intervalLength = 1.0 / (maxTime - 1);
-
-    featureExtraction->setTrenchDimensions(trenchDepth, trenchWidth);
-
-    NumericType trenchTopWidth = trenchWidth;
-    if (!params.fixTopWidth) {
-      trenchTopWidth +=
-          trenchDepth *
-          (std::tan(Utils::deg2rad(std::max(NumericType{0.}, leftTaperAngle))) +
-           std::tan(
-               Utils::deg2rad(std::max(NumericType{0.}, rightTaperAngle))));
-    }
 
     // Since we assume a top rate of 1, the maximum time it takes for the
     // trench to close is equal to the trench top width (if sticking
@@ -292,8 +189,7 @@ int main(const int argc, const char *const *const argv) {
                                               processDuration * intervalLength);
 
     advectionCallback->setFeatureExtraction(featureExtraction);
-    advectionCallback->setPrefixData(std::vector<NumericType>{
-        aspectRatio, leftTaperAngle, stickingProbability});
+    advectionCallback->setPrefixData(prefixData);
     advectionCallback->setWriter(writer);
     advectionCallback->setModifiers(intervalLength, 1.0);
 
@@ -304,10 +200,10 @@ int main(const int argc, const char *const *const argv) {
     auto depoLayer = lsSmartPointer<lsDomain<NumericType, D>>::New(trench);
     geometry->insertNextLevelSet(depoLayer);
 
+    // Instantiate the process
     auto processModel =
-        SimpleDeposition<NumericType, D>(
-            stickingProbability /* particle sticking probability */,
-            1.0 /* particle source power */)
+        SimpleDeposition<NumericType, D>(stickingProbability,
+                                         1.0 /* particle source power */)
             .getProcessModel();
 
     processModel->setAdvectionCallback(advectionCallback);
@@ -321,6 +217,7 @@ int main(const int argc, const char *const *const argv) {
     // Run the process
     process.apply();
 
+    // Ensure that values are written to disk
     writer->flush();
   }
 }
