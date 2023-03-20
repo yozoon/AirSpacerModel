@@ -5,3 +5,4 @@ taperAngles = 15, 10, 5, 0
 stickingProbabilities = 0.01, 0.04, 0.07, 0.1
 timeSteps = 11
 symmetrical = true
+fixTopWidth = false
