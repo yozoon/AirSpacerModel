@@ -250,6 +250,82 @@ public:
 
     return {{tmpData[0], isInside}};
   }
+
+  std::optional<std::tuple<std::vector<std::vector<NumericType>>, bool>>
+  gradient(const std::vector<NumericType> &input) {
+    if (dataChanged)
+      if (!initialize())
+        return {};
+
+    if (input.size() != inputDim) {
+      std::cout << "SplineGridInterpolation: The provided input does not have "
+                   "the right number of dimensions.\n";
+      return {};
+    }
+
+    bool isInside = true;
+    for (SizeType i = 0; i < inputDim; ++i) {
+      if (!uniqueValues[i].empty()) {
+        // Check if the input lies within the bounds of our data grid
+        if (input[i] < *(uniqueValues[i].begin()) ||
+            input[i] > *(uniqueValues[i].rbegin())) {
+          isInside = false;
+          break;
+        }
+      } else {
+        return {};
+      }
+    }
+
+    // Interpolate in each dimension
+    SizeType numPoints = localData.size();
+
+    std::vector<std::vector<NumericType>> result(outputDim);
+
+    for (int m = 0; m < inputDim; ++m) {
+      // Copy only the output dimensions of the data into a new temporary data
+      // vector
+      std::vector<std::vector<NumericType>> tmpData;
+      tmpData.reserve(numPoints);
+      for (auto &ld : localData) {
+        tmpData.emplace_back(std::next(ld.begin(), inputDim), ld.end());
+      }
+
+      SizeType numberOfSplines = numPoints;
+      SizeType numUniqueAlongPreviousAxis = 1;
+      for (int i = inputDim - 1; i >= 0; --i) {
+        // The knots used by the spline interpolation are just the unique values
+        // along the current axis
+        std::vector<NumericType> x(uniqueValues[i].begin(),
+                                   uniqueValues[i].end());
+        SizeType numUniqueAlongAxis = x.size();
+        numberOfSplines /= numUniqueAlongAxis;
+        for (SizeType j = 0; j < numberOfSplines; ++j) {
+          // Copy the appropriate data points from the temporary data vector
+          std::vector<std::vector<NumericType>> y;
+          y.reserve(numUniqueAlongAxis);
+          for (SizeType k = 0; k < numUniqueAlongAxis; ++k)
+            y.push_back(tmpData.at(j * numUniqueAlongAxis +
+                                   k * numUniqueAlongPreviousAxis));
+
+          // Instantiate the spline interpolation
+          CubicSplineInterpolation<NumericType> interpolation(x, y, bcTypes[i]);
+          // And evaluate the interpolation function at the location of the
+          // input. The output overwrites part of the temporary data vector, so
+          // that we can use it as input in the next interpolation iteration.
+          if (i == m) {
+            tmpData[j] = interpolation.derivative(input[i]);
+          } else {
+            tmpData[j] = interpolation(input[i]);
+          }
+        }
+        numUniqueAlongAxis = numUniqueAlongAxis;
+      }
+      result[m].swap(tmpData[0]);
+    }
+
+    return {{result, isInside}};
+  }
 };
 
 #endif

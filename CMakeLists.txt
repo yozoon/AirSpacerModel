@@ -41,6 +41,21 @@ add_executable(${L2V} src/${L2V}.cpp)
 target_include_directories(${L2V} PUBLIC ${PROJECT_INCLUDE_DIRS})
 target_link_libraries(${L2V} PRIVATE ${PROJECT_LIBRARIES})
 
+find_package(fmt QUIET)
+if(fmt_FOUND)
+  list(APPEND PROJECT_LIBRARIES fmt::fmt)
+
+  set(FR FillingRatio)
+  add_executable(${FR} src/${FR}.cpp)
+  target_include_directories(${FR} PUBLIC ${PROJECT_INCLUDE_DIRS})
+  target_link_libraries(${FR} PRIVATE ${PROJECT_LIBRARIES})
+
+  set(SPLINE TestSpline)
+  add_executable(${SPLINE} src/${SPLINE}.cpp)
+  target_include_directories(${SPLINE} PUBLIC ${PROJECT_INCLUDE_DIRS})
+  target_link_libraries(${SPLINE} PRIVATE ${PROJECT_LIBRARIES})
+endif()
+
 # Copy data and config files to the build directory
 configure_file(data/data.csv ${CMAKE_CURRENT_BINARY_DIR}/data.csv COPYONLY)
 configure_file(data/config.txt ${CMAKE_CURRENT_BINARY_DIR}/config.txt COPYONLY)

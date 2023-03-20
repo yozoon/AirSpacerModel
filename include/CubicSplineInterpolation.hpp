@@ -102,6 +102,30 @@ public:
     return result;
   }
 
+  std::vector<NumericType> derivative(NumericType x) {
+    if (!initialized)
+      initialize();
+
+    auto lowerBound = std::lower_bound(knots.begin(), knots.end(), x);
+
+    int d = std::distance(knots.begin(), lowerBound);
+    int i = std::clamp(d, 1, N - 1);
+
+    NumericType t = (x - knots[i - 1]) / (knots[i] - knots[i - 1]);
+
+    std::vector<NumericType> deriv(outputDimension, 0.);
+    for (int j = 0; j < outputDimension; ++j) {
+      deriv[j] =
+          ((y[i][j] - y[i - 1][j]) +
+           (1.0 - 2.0 * t) * (a[i * outputDimension + j] * (1.0 - t) +
+                              b[i * outputDimension + j] * t) +
+           t * (1.0 - t) *
+               (b[i * outputDimension + j] - a[i * outputDimension + j])) /
+          (knots[i] - knots[i - 1]);
+    }
+    return deriv;
+  }
+
 private:
   void initialize() {
     // RHS matrix (Column major layout!)
