@@ -34,11 +34,10 @@ int main(const int argc, const char *const *const argv) {
   static constexpr int D = 2;
 
   std::array<NumericType, 3> origin{0.};
-  // NumericType gridDelta = 0.2;
   const size_t numberOfCrossSectionPoints = 500;
-  NumericType trenchWidth = 4.; // -> 20 grid points
+  const NumericType trenchWidth = 5.;
 
-  int numberOfSamples = 512;
+  const int numberOfSamples = 512;
 
   std::unordered_map<std::string, std::string> config;
 
@@ -57,7 +56,7 @@ int main(const int argc, const char *const *const argv) {
   // feature extraction.
   int inputDimension = params.getInputDimension();
 
-  // Instantiate the featureExtraction
+  // Instantiate the feature extraction tool
   auto featureExtraction =
       lsSmartPointer<FeatureExtraction<NumericType, D>>::New();
   featureExtraction->setNumberOfSamples(numberOfSamples,
@@ -72,7 +71,7 @@ int main(const int argc, const char *const *const argv) {
 
   auto writer = lsSmartPointer<psCSVWriter<NumericType>>::New(params.filename);
 
-  // Creation of a descriptive header
+  // Creation of a header for the csv file
   auto header = createHeader(numberOfSamples, *sampleLocations, inputDimension,
                              params.symmetrical);
   writer->setHeader(header);
@@ -82,7 +81,6 @@ int main(const int argc, const char *const *const argv) {
 
   const bool fixTopWidth = params.fixTopWidth;
   const auto maxTime = params.timeSteps;
-  const NumericType intervalLength = 1.0 / (maxTime - 1);
 
   unsigned count = 0;
   for (const auto [aspectRatio, leftTaperAngle, rightTaperAngle,
@@ -109,9 +107,9 @@ int main(const int argc, const char *const *const argv) {
     }
 
     // The horizontal extent is defined by the trench top width, or the bottom
-    // width, whichever is larger. Extend it by 5%.
-    NumericType horizontalExtent =
-        std::max(trenchTopWidth, trenchBottomWidth) * 1.05;
+    // width, whichever is larger. Extend it by 10%.
+    NumericType horizontalExtent = std::max(
+        std::max(trenchTopWidth, trenchBottomWidth) * 1.1, NumericType{10.});
 
     NumericType crossSectionLength =
         horizontalExtent - trenchTopWidth +
@@ -119,11 +117,24 @@ int main(const int argc, const char *const *const argv) {
         std::sqrt(rightOffset * rightOffset + trenchDepth * trenchDepth) +
         trenchBottomWidth;
 
+    // Adjustment of grid delta:
     // Calculate a grid delta such that the final geometry contains
-    // approximately `numberOfCrossSectionPoints` points
-    NumericType gridDelta = crossSectionLength / numberOfCrossSectionPoints;
+    // approximately `numberOfCrossSectionPoints` surface points
+    NumericType gridDeltaSpace =
+        crossSectionLength / numberOfCrossSectionPoints;
 
-    std::cout << ++count << '/' << totalNumberOfCombinations << std::endl;
+    // Calculate another grid delta that ensures that at least
+    // `numberOfStepsPerInterval` steps are taken in each extraction interval.
+    int numberOfStepsPerInterval = 1;
+    NumericType gridDeltaTime = stickingProbability * (params.timeSteps - 1) /
+                                (numberOfStepsPerInterval * 0.4999);
+
+    // Finally chose whichever value of the two is smaller
+    const NumericType gridDelta = std::min(gridDeltaSpace, gridDeltaTime);
+
+    std::cout << ++count << '/' << totalNumberOfCombinations
+              << " complexity: " << crossSectionLength / gridDelta << std::endl;
+
     // If one of the widths is negative, the sidewalls intersect. This makes
     // would make the definition of the aspect ratio quite questionable, thus we
     // skip these cases alltogether.
@@ -145,9 +156,9 @@ int main(const int argc, const char *const *const argv) {
       // Initialize the sample values with the placeholder value
       std::generate(std::next(dummyRow.begin(), prefixData.size() + 1UL),
                     dummyRow.end(), [=]() { return placeholderValue; });
-      for (int i = 0; i < params.timeSteps; ++i) {
+      for (int i = 0; i < maxTime; ++i) {
         // Update the timestep value in the dummy row
-        dummyRow[prefixData.size()] = i * intervalLength;
+        dummyRow[prefixData.size()] = 1.0 * i / (params.timeSteps - 1);
         // Write the row to the file
         writer->writeRow(dummyRow);
       }
@@ -176,22 +187,23 @@ int main(const int argc, const char *const *const argv) {
     // Normalize the time scale to the sticking probability, so that we
     // get the same top layer thickness for different sticking
     // probabilities.
-    NumericType timeScale = 1.0 / stickingProbability;
+    NumericType timeNormalizationFactor = 1.0 / stickingProbability;
 
     // Since we assume a top rate of 1, the maximum time it takes for the
     // trench to close is equal to the trench top width (if sticking
-    // probability 1, otherwise the time until pinchoff will be even less)
+    // probability 1, otherwise the time until pinchoff should be even less)
     NumericType processDuration = trenchTopWidth;
 
     auto advectionCallback = lsSmartPointer<AdvectionCallback<
         NumericType, D, decltype(featureExtraction)::element_type,
-        decltype(writer)::element_type>>::New(timeScale,
-                                              processDuration * intervalLength);
+        decltype(writer)::element_type>>::New(timeNormalizationFactor,
+                                              processDuration /
+                                                  (params.timeSteps - 1));
 
     advectionCallback->setFeatureExtraction(featureExtraction);
     advectionCallback->setPrefixData(prefixData);
     advectionCallback->setWriter(writer);
-    advectionCallback->setModifiers(intervalLength, 1.0);
+    advectionCallback->setModifiers(1.0 / (params.timeSteps - 1), 1.0);
 
     auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
     geometry->insertNextLevelSet(trench);
@@ -211,8 +223,8 @@ int main(const int argc, const char *const *const argv) {
     psProcess<NumericType, D> process;
     process.setDomain(geometry);
     process.setProcessModel(processModel);
-    process.setNumberOfRaysPerPoint(2000);
-    process.setProcessDuration(processDuration / stickingProbability);
+    process.setNumberOfRaysPerPoint(1000);
+    process.setProcessDuration(processDuration * timeNormalizationFactor);
 
     // Run the process
     process.apply();
