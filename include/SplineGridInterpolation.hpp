@@ -184,7 +184,7 @@ public:
     return true;
   }
 
-  std::optional<std::tuple<std::vector<NumericType>, bool>>
+  [[nodiscard]] std::optional<std::tuple<std::vector<NumericType>, bool>>
   estimate(const std::vector<NumericType> &input) {
     if (dataChanged)
       if (!initialize())
@@ -251,7 +251,8 @@ public:
     return {{tmpData[0], isInside}};
   }
 
-  std::optional<std::tuple<std::vector<std::vector<NumericType>>, bool>>
+  [[nodiscard]] std::optional<
+      std::tuple<std::vector<std::vector<NumericType>>, bool>>
   gradient(const std::vector<NumericType> &input) {
     if (dataChanged)
       if (!initialize())
@@ -280,14 +281,14 @@ public:
     // Interpolate in each dimension
     SizeType numPoints = localData.size();
 
-    std::vector<std::vector<NumericType>> result(outputDim);
+    std::vector<std::vector<NumericType>> result(inputDim);
 
     for (int m = 0; m < inputDim; ++m) {
       // Copy only the output dimensions of the data into a new temporary data
       // vector
       std::vector<std::vector<NumericType>> tmpData;
       tmpData.reserve(numPoints);
-      for (auto &ld : localData) {
+      for (const auto &ld : localData) {
         tmpData.emplace_back(std::next(ld.begin(), inputDim), ld.end());
       }
 
@@ -304,9 +305,10 @@ public:
           // Copy the appropriate data points from the temporary data vector
           std::vector<std::vector<NumericType>> y;
           y.reserve(numUniqueAlongAxis);
-          for (SizeType k = 0; k < numUniqueAlongAxis; ++k)
+          for (SizeType k = 0; k < numUniqueAlongAxis; ++k) {
             y.push_back(tmpData.at(j * numUniqueAlongAxis +
                                    k * numUniqueAlongPreviousAxis));
+          }
 
           // Instantiate the spline interpolation
           CubicSplineInterpolation<NumericType> interpolation(x, y, bcTypes[i]);

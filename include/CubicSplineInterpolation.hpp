@@ -81,7 +81,7 @@ public:
     // fmt::print("{}\n", y);
   }
 
-  std::vector<NumericType> operator()(NumericType x) {
+  [[nodiscard]] std::vector<NumericType> operator()(NumericType x) {
     if (!initialized)
       initialize();
 
@@ -102,7 +102,7 @@ public:
     return result;
   }
 
-  std::vector<NumericType> derivative(NumericType x) {
+  [[nodiscard]] std::vector<NumericType> derivative(NumericType x) {
     if (!initialized)
       initialize();
 

@@ -6,6 +6,7 @@
 #include <lsMessage.hpp>
 
 #include "CSVReader.hpp"
+#include "SplineGridInterpolation.hpp"
 
 int main(const int argc, const char *const *const argv) {
   // Input: sticking probability, initial_bottom_width, desired depth, maximum
@@ -14,7 +15,7 @@ int main(const int argc, const char *const *const argv) {
   using NumericType = double;
   static constexpr int D = 2;
 
-  std::string dataFilename = "data.csv";
+  std::string dataFilename = "trenchfill.csv";
   if (argc > 1)
     dataFilename = argv[1];
 
@@ -45,6 +46,9 @@ int main(const int argc, const char *const *const argv) {
       static_cast<unsigned>(std::ceil(1.0 * numFeatures / 2));
   unsigned numFeaturesLeft = numFeatures - numFeaturesRight;
 
+  auto fillingRatioData =
+      lsSmartPointer<std::vector<std::vector<NumericType>>>::New();
+  fillingRatioData->reserve(data->size());
   for (auto &d : *data) {
     NumericType aspectRatio = d[0];
     NumericType taperAngle = d[1];
@@ -87,8 +91,26 @@ int main(const int argc, const char *const *const argv) {
     //                                     cummulativeOpening / belowZeroCount;
 
     NumericType fillingRatio = 1.0 * closedCount / belowZeroCount;
+    fillingRatioData->emplace_back(std::vector<NumericType>{
+        aspectRatio, taperAngle, stickingProbability, time, fillingRatio});
+
     fmt::print("{},{},{:.2f},{},{:.4f}\n", static_cast<int>(aspectRatio),
                static_cast<int>(taperAngle), stickingProbability, time,
                fillingRatio);
   }
+
+  auto first = fillingRatioData->at(0);
+
+  SplineGridInterpolation<NumericType> sgi;
+  sgi.setDataDimensions(inputDim, 1);
+  sgi.setBCType(SplineBoundaryConditionType::NOT_A_KNOT);
+  sgi.setData(fillingRatioData);
+  sgi.initialize();
+
+  std::vector<NumericType> loc;
+  for (int i = 0; i < inputDim; ++i) {
+    loc.push_back(first[i]);
+  }
+  auto grad = sgi.gradient(loc);
+  fmt::print("Done\n");
 }
