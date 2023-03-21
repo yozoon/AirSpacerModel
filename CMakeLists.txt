@@ -32,7 +32,7 @@ endif()
 # Add include directories
 list(APPEND PROJECT_INCLUDE_DIRS ${VIENNALS_INCLUDE_DIRS} include/)
 # Add libraries
-list(APPEND PROJECT_LIBRARIES ${VIENNALS_LIBRARIES} ${LAPACK_LIBRARIES})
+list(APPEND PROJECT_LIBRARIES stdc++fs ${VIENNALS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 set(EMULATION AirSpacerEmulation)
 add_executable(${EMULATION} src/${EMULATION}.cpp)
