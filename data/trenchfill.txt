@@ -2,5 +2,5 @@
 stickingProbability = 0.01
 trenchBottomWidth = 5
 trenchDepth = 30
-topWidthLimit = 10
-fillingRatioThreshold = 0.9
+topWidthLimit = 15
+fillingRatioThreshold = 0.99

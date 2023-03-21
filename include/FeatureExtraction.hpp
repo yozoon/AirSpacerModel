@@ -16,6 +16,8 @@
 
 #include <psKDTree.hpp>
 
+// Extracts distances to right and left sidewall and normalizes them with
+// respect to the trench top diameter.
 template <typename NumericType, int D> class FeatureExtraction {
   using ConstPtr = lsSmartPointer<const std::vector<NumericType>>;
   enum FeatureLabelEnum : unsigned {

@@ -6,6 +6,10 @@ project("AirSpacerModel")
 find_package(ViennaLS REQUIRED)
 find_package(LAPACK REQUIRED)
 
+find_package(fmt QUIET)
+set(VIENNAPS_VERBOSE OFF)
+find_package(ViennaPS QUIET)
+
 # Set default build type
 set(DEFAULT_BUILD_TYPE "Release")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -43,11 +47,14 @@ target_include_directories(${TRENCHFILL} PUBLIC ${PROJECT_INCLUDE_DIRS})
 target_link_libraries(${TRENCHFILL} PRIVATE ${PROJECT_LIBRARIES})
 configure_file(data/trenchfill_dataset.csv ${CMAKE_CURRENT_BINARY_DIR}/trenchfill_dataset.csv COPYONLY)
 configure_file(data/trenchfill.txt ${CMAKE_CURRENT_BINARY_DIR}/trenchfill.txt COPYONLY)
+if(ViennaPS_FOUND)
+  target_compile_definitions(${TRENCHFILL} PRIVATE WITH_VIENNAPS)
+  target_include_directories(${TRENCHFILL} PUBLIC ${VIENNAPS_INCLUDE_DIRS})
+  target_link_libraries(${TRENCHFILL} PRIVATE ${VIENNAPS_LIBRARIES})
+endif()
 
 # Optional executables for generating the dataset as well as for testing
 # the extraction and reconstruction functionality
-set(VIENNAPS_VERBOSE OFF)
-find_package(ViennaPS QUIET)
 if(ViennaPS_FOUND)
   # The reference simulation to check the results of the AirSpacerEmulation
   set(SIMULATION AirSpacerSimulation)
@@ -76,7 +83,6 @@ add_executable(${L2V} src/${L2V}.cpp)
 target_include_directories(${L2V} PUBLIC ${PROJECT_INCLUDE_DIRS})
 target_link_libraries(${L2V} PRIVATE ${PROJECT_LIBRARIES})
 
-find_package(fmt QUIET)
 if(fmt_FOUND)
   list(APPEND PROJECT_LIBRARIES fmt::fmt)
 

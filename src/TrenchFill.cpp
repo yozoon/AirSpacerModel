@@ -7,6 +7,14 @@
 #include <lsMessage.hpp>
 #include <lsSmartPointer.hpp>
 
+#ifdef WITH_VIENNAPS
+#include "TrenchGeometry.hpp"
+#include <SimpleDeposition.hpp>
+#include <lsWriteVisualizationMesh.hpp>
+#include <psProcess.hpp>
+#include <psSmartPointer.hpp>
+#endif
+
 #include "CSVReader.hpp"
 #include "CubicSplineInterpolation.hpp"
 #include "SplineGridInterpolation.hpp"
@@ -31,13 +39,18 @@ public:
     NumericType fillingRatioThreshold = 0.9;
 
     // Now assign the items
-    Utils::AssignItems(
-        map, Utils::Item{"stickingProbability", stickingProbability},
-        Utils::Item{"trenchBottomWidth", trenchBottomWidth},
-        Utils::Item{"trenchDepth", trenchDepth},
-        Utils::Item{"topWidthLimit", topWidthLimit},
-        Utils::Item{"fillingRatioThreshold", fillingRatioThreshold,
-                    &Utils::toUnitRange<NumericType>});
+    Utils::AssignItems(map,
+                       Utils::Item{"stickingProbability", stickingProbability,
+                                   &Utils::toUnitRange<NumericType>},
+                       Utils::Item{"trenchBottomWidth", trenchBottomWidth,
+                                   &Utils::toStrictlyPositive<NumericType>},
+                       Utils::Item{"trenchDepth", trenchDepth,
+                                   &Utils::toStrictlyPositive<NumericType>},
+                       Utils::Item{"topWidthLimit", topWidthLimit,
+                                   &Utils::toStrictlyPositive<NumericType>},
+                       Utils::Item{"fillingRatioThreshold",
+                                   fillingRatioThreshold,
+                                   &Utils::toUnitRange<NumericType>});
 
     return Parameters(stickingProbability, trenchBottomWidth, trenchDepth,
                       topWidthLimit, fillingRatioThreshold);
@@ -149,10 +162,11 @@ int main(const int argc, const char *const *const argv) {
       // non-conformal coating. Count values smaller than 2% of top opening as
       // closed. Since the trench is symmetrical we only look at the features on
       // the right.
+      const NumericType sampleThreshold = 0.0;
       int closedCount = std::count_if(
           std::next(d.begin(), inputDim + numRightFeaturesAboveZero),
           std::next(d.begin(), inputDim + numFeaturesRight),
-          [](NumericType p) { return p <= 0.02; });
+          [=](NumericType p) { return p <= sampleThreshold; });
 
       int belowZeroCount = numFeaturesRight - numRightFeaturesAboveZero;
 
@@ -281,12 +295,94 @@ int main(const int argc, const char *const *const argv) {
 
   // Print the result
   bool success = topWidth <= params.topWidthLimit;
-  std::cout << (success ? "SUCCESS: " : "")
-            << "The minimum taper angle required to achieve a filling ratio of "
-               "at least "
-            << 100.0 * params.fillingRatioThreshold << "% is " << thresholdAngle
-            << "°.\nThis leads to a trench top width of " << topWidth
-            << " which " << (success ? "does" : "does not")
-            << " meet the specified top width limit.\n";
+  std::cout
+      << (success ? "\nSUCCESS!\n" : "\n")
+      << "The minimum taper angle required to achieve a filling ratio\nof "
+         "at least "
+      << 100.0 * params.fillingRatioThreshold << "% is " << thresholdAngle
+      << "°.\nThis leads to a trench top width of " << topWidth << " which "
+      << (success ? "fulfills" : "DOES NOT fulfill")
+      << "\nthe specified top width constraint.\n\n";
+
+#ifdef WITH_VIENNAPS
+  static constexpr int D = 2;
+  if (success) {
+    std::cout << "Should I run a physical simulation to verify the "
+                 "solution? [y/n]";
+    char c;
+    std::cin >> c;
+    if (c == 'y' || c == 'Y') {
+      std::cout << "Running simulation...\n";
+      const NumericType gridDelta = std::max(params.trenchDepth / 100, 0.2);
+      NumericType trenchTopWidth = topWidth;
+      NumericType trenchBottomWidth = params.trenchBottomWidth;
+
+      // Calculate the offset caused by the tapering
+      const NumericType offset =
+          params.trenchDepth * std::tan(Utils::deg2rad(thresholdAngle));
+
+      // The horizontal extent is defined by the trench top width, or the bottom
+      // width, whichever is larger. Extend it by 20%.
+      NumericType horizontalExtent = topWidth * 1.2;
+
+      // Generate the grid
+      std::array<NumericType, 3> origin{0.};
+      auto grid = createGrid<NumericType, D>(
+          origin, gridDelta, horizontalExtent,
+          10.0 /* initial vertical extent */, false /* No periodic BC */);
+
+      // Create the inside of the trench that will be removed from the plane
+      auto cutout = createTrenchStamp<NumericType, D>(
+          grid, origin, params.trenchDepth, trenchTopWidth, thresholdAngle,
+          thresholdAngle, true);
+
+      auto trench = createPlane<NumericType, D>(grid, origin);
+      lsBooleanOperation<NumericType, D>(
+          trench, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+          .apply();
+
+      // Normalize the time scale to the sticking probability, so that we
+      // get the same top layer thickness for different sticking
+      // probabilities.
+      NumericType timeNormalizationFactor = 1.0 / params.stickingProbability;
+
+      // Since we assume a top rate of 1, the maximum time it takes for the
+      // trench to close is equal to the trench top width (if sticking
+      // probability 1, otherwise the time until pinchoff should be even less)
+      NumericType processDuration = 2 * trenchTopWidth / 3;
+
+      auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
+      geometry->insertNextLevelSet(trench);
+
+      // copy top layer to capture deposition
+      auto depoLayer = lsSmartPointer<lsDomain<NumericType, D>>::New(trench);
+      geometry->insertNextLevelSet(depoLayer);
+
+      // Instantiate the process
+      auto processModel =
+          SimpleDeposition<NumericType, D>(params.stickingProbability,
+                                           1.0 /* particle source power */)
+              .getProcessModel();
+
+      psProcess<NumericType, D> process;
+      process.setDomain(geometry);
+      process.setProcessModel(processModel);
+      process.setNumberOfRaysPerPoint(2000);
+      process.setProcessDuration(processDuration * timeNormalizationFactor);
+
+      // Run the process
+      process.apply();
+
+      std::cout << "Saving result as 'FilledTrench_volume.vtu'\n";
+      lsWriteVisualizationMesh<NumericType, D> visMesh;
+      for (auto ls : *geometry->getLevelSets()) {
+        visMesh.insertNextLevelSet(ls);
+      }
+      visMesh.setFileName("FilledTrench");
+      visMesh.apply();
+    }
+  }
+#endif
+
   return EXIT_SUCCESS;
 }
