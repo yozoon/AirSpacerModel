@@ -1,5 +1,5 @@
-# Configuration file for generating data for the air spacer application
-filename = data.csv
+# Configuration file for generating data for the AirSpacerEmulation application  using CreateData
+filename = airspacer_dataset.csv
 aspectRatios = 10., 30., 50., 70., 100.
 taperAngles = -5.0, -2.5, -1.0, 0.0
 stickingProbabilities = 0.1, 0.07, 0.04, 0.01
