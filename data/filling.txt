@@ -1,0 +1,6 @@
+# Config file for the FillingRatio application
+stickingProbability = 0.01
+trenchBottomWidth = 5
+trenchDepth = 30
+topWidthLimit = 10
+fillingRatioThreshold = 0.9

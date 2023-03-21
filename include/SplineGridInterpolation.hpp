@@ -283,7 +283,7 @@ public:
 
     std::vector<std::vector<NumericType>> result(inputDim);
 
-    for (int m = 0; m < inputDim; ++m) {
+    for (int m = 0; m < static_cast<int>(inputDim); ++m) {
       // Copy only the output dimensions of the data into a new temporary data
       // vector
       std::vector<std::vector<NumericType>> tmpData;
