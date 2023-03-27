@@ -26,6 +26,11 @@ inline constexpr NumericType deg2rad(NumericType deg) {
   return deg * PI<NumericType> / NumericType{180.};
 }
 
+template <typename NumericType>
+inline constexpr NumericType rad2deg(NumericType rad) {
+  return rad * NumericType{180.} / PI<NumericType>;
+}
+
 template <typename NumericType, int D>
 void printSurface(lsSmartPointer<lsDomain<NumericType, D>> levelset,
                   const std::string &filename) {

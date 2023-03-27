@@ -1,3 +1,4 @@
+#include <fstream>
 #include <iostream>
 #include <numeric>
 #include <string>
@@ -19,13 +20,15 @@
 #include "SplineGridInterpolation.hpp"
 #include "Utils.hpp"
 
+#define SAMPLE_SLICE
+
 template <typename NumericType> class Parameters {
 public:
   const NumericType stickingProbability;
   const NumericType trenchBottomWidth;
   const NumericType trenchDepth;
   const NumericType topWidthLimit;
-  const NumericType fillingRatioThreshold;
+  const NumericType angleLeeway;
 
   // Factory pattern to construct an instance of the class from a map
   static Parameters
@@ -35,7 +38,9 @@ public:
     NumericType trenchBottomWidth = 5;
     NumericType trenchDepth = 50;
     NumericType topWidthLimit = 10;
-    NumericType fillingRatioThreshold = 0.99;
+
+    // How much the angle is allowed to increase while following the isoline
+    NumericType angleLeeway = 2.0;
 
     // Now assign the items
     Utils::AssignItems(map,
@@ -47,12 +52,10 @@ public:
                                    &Utils::toStrictlyPositive<NumericType>},
                        Utils::Item{"topWidthLimit", topWidthLimit,
                                    &Utils::toStrictlyPositive<NumericType>},
-                       Utils::Item{"fillingRatioThreshold",
-                                   fillingRatioThreshold,
-                                   &Utils::toUnitRange<NumericType>});
+                       Utils::Item{"angleLeeway", angleLeeway});
 
     return Parameters(stickingProbability, trenchBottomWidth, trenchDepth,
-                      topWidthLimit, fillingRatioThreshold);
+                      topWidthLimit, angleLeeway);
   }
 
   void print() const {
@@ -61,25 +64,59 @@ public:
     std::cout << "- trenchBottomWidth: " << trenchBottomWidth << '\n';
     std::cout << "- trenchDepth: " << trenchDepth << '\n';
     std::cout << "- topWidthLimit: " << topWidthLimit << '\n';
-    std::cout << "- fillingRatioThreshold: " << fillingRatioThreshold << '\n';
+    std::cout << "- angleLeeway: " << angleLeeway << '\n';
   }
 
 private:
   // Private constructor, so that the user is forced to use the factory
   Parameters(NumericType passedStickingProbability,
              NumericType passedTrenchBottomWidth, NumericType passedTrenchDepth,
-             NumericType passedTopWidthLimit,
-             NumericType passedFillingRatioThreshold)
+             NumericType passedTopWidthLimit, NumericType passedAngleLeeway)
       : stickingProbability(passedStickingProbability),
         trenchBottomWidth(passedTrenchBottomWidth),
         trenchDepth(passedTrenchDepth), topWidthLimit(passedTopWidthLimit),
-        fillingRatioThreshold(passedFillingRatioThreshold) {}
+        angleLeeway(passedAngleLeeway) {}
 };
 
+template <typename NumericType>
+NumericType toFillingRatio(
+    const NumericType aspectRatio, const NumericType taperAngle,
+    const NumericType stickingProbability, const NumericType time,
+    const typename std::vector<NumericType>::const_iterator rightFeaturesBegin,
+    const typename std::vector<NumericType>::const_iterator rightFeaturesEnd) {
+  const size_t numFeaturesRight = rightFeaturesEnd - rightFeaturesBegin;
+
+  auto tan = std::tan(Utils::deg2rad(taperAngle));
+
+  // The percentage of features that are above the initial trench top
+  // surface
+  NumericType aboveZeroRatio = (1.0 + 2.0 * aspectRatio * tan) /
+                               (1.0 + 2.0 * aspectRatio * tan + aspectRatio);
+
+  int aboveSurfaceCount =
+      static_cast<int>(std::ceil(numFeaturesRight * aboveZeroRatio));
+
+  // Percentage of the trench below the zero line that is filled with the
+  // non-conformal coating. Count values smaller than 2% of top opening as
+  // closed. Since the trench is symmetrical we only look at the features on
+  // the right.
+  int closedCount = std::count_if(rightFeaturesBegin, rightFeaturesEnd,
+                                  [=](NumericType p) { return p == 0.0; });
+  int closedAboveSurfaceCount = std::count_if(
+      rightFeaturesBegin, std::next(rightFeaturesBegin, aboveSurfaceCount),
+      [=](NumericType p) { return p == 0.0; });
+
+  int closedBelowSurfaceCount = closedCount - closedAboveSurfaceCount;
+  int belowSurfaceCount = numFeaturesRight - aboveSurfaceCount;
+
+  NumericType fillingRatio = 1.0 * closedBelowSurfaceCount / belowSurfaceCount;
+  // Tie breaker for gradient based methods
+  if (fillingRatio >= 1.0)
+    fillingRatio += 1.0 * closedAboveSurfaceCount / aboveSurfaceCount;
+  return fillingRatio;
+}
+
 int main(const int argc, const char *const *const argv) {
-  // Input: sticking probability, initial_bottom_width, desired depth, maximum
-  // top width Output: is there a solution at all. If there is a solution:
-  // minimum taper angle that ensures trench filling.
   using NumericType = double;
 
   if (argc != 3) {
@@ -107,12 +144,9 @@ int main(const int argc, const char *const *const argv) {
   auto params = Parameters<NumericType>::fromMap(config);
   params.print();
 
-  // Calculate the aspect ratio
-  NumericType aspectRatio = params.trenchDepth / params.trenchBottomWidth;
-
   // The input dimension is provided by the csv file named parameter
   // `InputDim` In our case it is 4 since we use aspectRatio, leftTaperAngle,
-  // stickintProbability and timeStep as input parameters.
+  // stickingProbability and timeStep as input parameters.
   int inputDim{};
   auto namedParams = reader.getNamedParameters();
   if (auto id = namedParams.find("InputDimension"); id != namedParams.end()) {
@@ -134,7 +168,6 @@ int main(const int argc, const char *const *const argv) {
   {
     unsigned numFeaturesRight =
         static_cast<unsigned>(std::ceil(1.0 * numFeatures / 2));
-    // unsigned numFeaturesLeft = numFeatures - numFeaturesRight;
 
     fillingRatioData->reserve(data->size());
     for (auto &d : *data) {
@@ -143,38 +176,24 @@ int main(const int argc, const char *const *const argv) {
       NumericType stickingProbability = d[2];
       NumericType time = d[3];
 
-      auto tan = std::tan(Utils::deg2rad(taperAngle));
+      auto fillingRatio =
+          toFillingRatio(aspectRatio, taperAngle, stickingProbability, time,
+                         std::next(d.begin(), inputDim),
+                         std::next(d.begin(), inputDim + numFeaturesRight));
 
-      // The percentage of features that are above the initial trench top
-      // surface
-      NumericType aboveZeroRatio =
-          (1.0 + 2.0 * aspectRatio * tan) /
-          (1.0 + 2.0 * aspectRatio * tan + aspectRatio);
+      auto row = std::vector<NumericType>{
+          aspectRatio, taperAngle, stickingProbability, time, fillingRatio};
 
-      int numRightFeaturesAboveZero =
-          static_cast<int>(std::ceil(numFeaturesRight * aboveZeroRatio));
-
-      // Percentage of the trench below the zero line that is filled with the
-      // non-conformal coating. Count values smaller than 2% of top opening as
-      // closed. Since the trench is symmetrical we only look at the features on
-      // the right.
-      const NumericType sampleThreshold = 0.0;
-      int closedCount = std::count_if(
-          std::next(d.begin(), inputDim + numRightFeaturesAboveZero),
-          std::next(d.begin(), inputDim + numFeaturesRight),
-          [=](NumericType p) { return p <= sampleThreshold; });
-
-      int belowZeroCount = numFeaturesRight - numRightFeaturesAboveZero;
-
-      NumericType fillingRatio = 1.0 * closedCount / belowZeroCount;
-      fillingRatioData->emplace_back(std::vector<NumericType>{
-          aspectRatio, taperAngle, stickingProbability, time, fillingRatio});
+      fillingRatioData->push_back(row);
     }
   }
 
-  // Second: extract slice of data at the provided sticking probability and
-  // aspect ratio
-  auto dataSlice = lsSmartPointer<std::vector<std::vector<NumericType>>>::New();
+  NumericType angleLimit = Utils::rad2deg(
+      std::atan((params.topWidthLimit - params.trenchBottomWidth) / 2 /
+                params.trenchDepth));
+
+  NumericType thresholdAngle = angleLimit;
+  NumericType normalizedProcessTime = 1.0;
   bool hasSolution = false;
   {
     SplineGridInterpolation<NumericType> sgi;
@@ -183,65 +202,53 @@ int main(const int argc, const char *const *const argv) {
     sgi.setData(fillingRatioData);
     sgi.initialize();
     auto uniqueValues = sgi.getUniqueValues();
+    auto angles = uniqueValues[1];
 
-    for (auto taperAngle : uniqueValues[1]) {
-      for (auto time : uniqueValues[3]) {
+    NumericType minAngle = *angles.begin();
+    NumericType maxAngle = *angles.rbegin();
+    NumericType aspectRatio = params.trenchDepth / params.trenchBottomWidth;
+
+#ifdef SAMPLE_SLICE
+    std::ofstream slice("slice.csv");
+
+    size_t resolution = 20;
+    NumericType minTime = *uniqueValues[3].begin();
+    NumericType maxTime = *uniqueValues[3].rbegin();
+    for (unsigned i = 0; i < resolution; ++i) {
+      for (unsigned j = 0; j < resolution; ++j) {
+        NumericType taperAngle =
+            minAngle + i * (maxAngle - minAngle) / (resolution - 1);
+        NumericType time = minTime + j * (maxTime - minTime) / (resolution - 1);
         std::vector<NumericType> loc = {aspectRatio, taperAngle,
                                         params.stickingProbability, time};
 
-        // auto grad = sgi.gradient(loc);
-        auto valOpt = sgi.estimate(loc);
-        if (valOpt) {
-          auto [value, isInside] = valOpt.value();
-          if (!isInside) {
-            lsMessage::getInstance()
-                .addError("The provided parameters are not within the "
-                          "boundaries of the dataset.")
-                .print();
-          }
-          dataSlice->emplace_back(
-              std::vector<NumericType>{taperAngle, time, value[0]});
-          if (value[0] >= params.fillingRatioThreshold)
-            hasSolution = true;
-        }
+        auto [frEstimate, isInside] = sgi.estimate(loc).value();
+        slice << taperAngle << ',' << time << ',' << frEstimate[0] << '\n';
       }
     }
-  }
-
-  if (!hasSolution) {
-    std::cout
-        << "There exists no solution in the range spanned by the dataset.\n";
-    return EXIT_SUCCESS;
-  }
-
-  // Now check if the minimum taper angle fulfills the requirement for the
-  // maximum top width
-  NumericType thresholdAngle;
-  NumericType topWidth;
-  NumericType normalizedProcessTime;
-  {
-    SplineGridInterpolation<NumericType> sgi;
-    sgi.setDataDimensions(dataSlice->at(0).size() - 1, 1);
-    sgi.setBCType(SplineBoundaryConditionType::NOT_A_KNOT);
-    sgi.setData(dataSlice);
-    sgi.initialize();
-    auto uniqueValues = sgi.getUniqueValues();
-    auto angles = uniqueValues.at(0);
+    slice.close();
+#endif
 
     // Do binary search to find the taper angle where the filling ratio has a
     // certain threshold value.
     NumericType eps = 1e-5;
-    NumericType minAngle = *angles.begin();
-    NumericType maxAngle = *angles.rbegin();
     unsigned maxIter = 100;
     unsigned i = 0;
     for (; i < maxIter; ++i) { // Do a maximum of `maxIter` iterations
       NumericType centerAngle = (maxAngle + minAngle) / 2;
-      std::vector<NumericType> loc = {centerAngle, 1.0};
-      auto [frEstimate, _] = sgi.estimate(loc).value();
-      if (frEstimate.at(0) <= params.fillingRatioThreshold) {
+      std::vector<NumericType> loc = {aspectRatio, centerAngle,
+                                      params.stickingProbability, 1.0};
+      auto [frEstimate, isInside] = sgi.estimate(loc).value();
+      if (!isInside) {
+        lsMessage::getInstance()
+            .addError("The provided parameters are not within the "
+                      "boundaries of the dataset.")
+            .print();
+      }
+      if (frEstimate.at(0) <= 1.0) {
         minAngle = centerAngle;
       } else {
+        hasSolution = true;
         maxAngle = centerAngle;
       }
       if (maxAngle - minAngle < eps) {
@@ -258,114 +265,139 @@ int main(const int argc, const char *const *const argv) {
                     std::to_string(maxIter) + std::string(" iterations"))
           .print();
     }
+    if (!hasSolution) {
+      lsMessage::getInstance()
+          .addError(
+              "There exists no solution in the range spanned by the dataset.")
+          .print();
+      return EXIT_SUCCESS;
+    }
+    thresholdAngle = maxAngle;
 
-    // Calculate the resulting top width
-    topWidth = params.trenchBottomWidth +
-               2.0 * params.trenchDepth * std::tan(Utils::deg2rad(maxAngle));
+    // Follow the isoline at the provided filling ratio threshold value
 
-    // Extend the top width by a few percent,
-    NumericType leeway = 0.05;
-    thresholdAngle =
-        180.0 *
-        std::atan((1.0 + leeway) * (topWidth - params.trenchBottomWidth) /
-                  (2.0 * params.trenchDepth)) /
-        Utils::PI<NumericType>;
-    topWidth = (1.0 + leeway) * topWidth;
+    NumericType eta = 0.01;
+    std::vector<NumericType> loc = {aspectRatio, thresholdAngle,
+                                    params.stickingProbability,
+                                    normalizedProcessTime};
 
-    // Now check the minimum time required to reach this value
-    NumericType stepsize = 1.0 / maxIter;
+    maxIter = 5000;
     for (unsigned i = 0; i < maxIter; ++i) {
-      normalizedProcessTime = 1.0 - i * stepsize;
-      std::vector<NumericType> loc = {thresholdAngle, normalizedProcessTime};
-      auto [frEstimate, _] = sgi.estimate(loc).value();
-      if (frEstimate.at(0) < params.fillingRatioThreshold)
+      if (loc[1] >= angleLimit) {
+        lsMessage::getInstance()
+            .addDebug("breaking based on angle limit")
+            .print();
         break;
+      }
+
+      auto [frGrad, _] = sgi.gradient(loc).value();
+      NumericType dx = frGrad[3].front();
+      NumericType dy = frGrad[1].front();
+      NumericType ny = dx / std::sqrt(dx * dx + dy * dy);
+      NumericType nx = -std::sqrt(1.0 - ny * ny);
+      loc[3] += eta * nx;
+      loc[1] += eta * ny;
+      normalizedProcessTime = loc[3];
+      thresholdAngle = loc[1];
+      if (loc[1] > maxAngle + params.angleLeeway) {
+        lsMessage::getInstance().addDebug("breaking based on leeway").print();
+        break;
+      }
     }
   }
 
-  // Print the result
+  // Calculate the resulting top width
+  NumericType topWidth =
+      params.trenchBottomWidth +
+      2.0 * params.trenchDepth * std::tan(Utils::deg2rad(thresholdAngle));
   bool success = topWidth <= params.topWidthLimit;
-  std::cout
-      << (success ? "\nSUCCESS!\n" : "\nNO SOLUTION FOUND!\n")
-      << "The minimum taper angle required to achieve a filling ratio\nof "
-         "at least "
-      << 100.0 * params.fillingRatioThreshold << "% is " << thresholdAngle
-      << "°.\nThis leads to a trench top width of " << topWidth << " which "
-      << (success ? "fulfills" : "does not fulfill")
-      << "\nthe specified top width constraint.\nAssuming a rate of 1, the "
-         "minimum required process time is "
-      << topWidth * normalizedProcessTime << "\n\n";
+  // Print the result
+  std::cout << (success ? "\nSUCCESS!\n" : "\nNO SOLUTION FOUND!\n")
+            << "The minimum taper angle required to achieve a filling ratio of "
+               "100% is "
+            << thresholdAngle << "°. This leads to a trench top width of "
+            << topWidth << " which "
+            << (success ? "fulfills " : "does not fulfill ")
+            << "the specified top width constraint of " << params.topWidthLimit
+            << ".\n";
+  if (success)
+    std::cout << "Assuming a rate of 1, the minimum required process time is "
+              << topWidth * normalizedProcessTime << '\n';
+  std::cout << std::endl;
 
 #ifdef WITH_VIENNAPS
   static constexpr int D = 2;
   if (success) {
     std::cout << "Should I run a physical simulation to verify the "
                  "solution? [y/n]";
-    char c;
-    std::cin >> c;
-    if (c == 'y' || c == 'Y') {
-      std::cout << "Running simulation...\n";
-      const NumericType gridDelta = std::max(params.trenchDepth / 100, 0.2);
+  } else {
+    std::cout << "Should I nevertheless run a physical simulation? [y/n]";
+  }
 
-      // The horizontal extent is defined by the trench top width, or the bottom
-      // width, whichever is larger. Extend it by 20%.
-      NumericType horizontalExtent = topWidth * 1.2;
+  char c;
+  std::cin >> c;
+  if (c == 'y' || c == 'Y') {
+    std::cout << "Running simulation...\n";
+    const NumericType gridDelta = params.trenchDepth / 200;
 
-      // Generate the grid
-      std::array<NumericType, 3> origin{0.};
-      auto grid = createGrid<NumericType, D>(
-          origin, gridDelta, horizontalExtent,
-          10.0 /* initial vertical extent */, false /* No periodic BC */);
+    // The horizontal extent is defined by the trench top width, or the bottom
+    // width, whichever is larger. Extend it by 20%.
+    NumericType horizontalExtent = topWidth * 1.2;
 
-      // Create the inside of the trench that will be removed from the plane
-      auto cutout = createTrenchStamp<NumericType, D>(
-          grid, origin, params.trenchDepth, topWidth, thresholdAngle,
-          thresholdAngle, true);
+    // Generate the grid
+    std::array<NumericType, 3> origin{0.};
+    auto grid = createGrid<NumericType, D>(origin, gridDelta, horizontalExtent,
+                                           10.0 /* initial vertical extent */,
+                                           false /* No periodic BC */);
 
-      auto trench = createPlane<NumericType, D>(grid, origin);
-      lsBooleanOperation<NumericType, D>(
-          trench, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
-          .apply();
+    // Create the inside of the trench that will be removed from the plane
+    auto cutout = createTrenchStamp<NumericType, D>(
+        grid, origin, params.trenchDepth, topWidth, thresholdAngle,
+        thresholdAngle, true);
 
-      // Since we assume a top rate of 1, the maximum time it takes for the
-      // trench to close is equal to the trench top width (if sticking
-      // probability 1, otherwise the time until pinchoff should be even less)
-      // Additionally ormalize the time scale to the sticking probability, so
-      // that we get the same top layer thickness for different sticking
-      // probabilities.
-      NumericType processDuration =
-          normalizedProcessTime * topWidth / params.stickingProbability;
+    auto trench = createPlane<NumericType, D>(grid, origin);
+    lsBooleanOperation<NumericType, D>(
+        trench, cutout, lsBooleanOperationEnum::RELATIVE_COMPLEMENT)
+        .apply();
 
-      auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
-      geometry->insertNextLevelSet(trench);
+    // Since we assume a top rate of 1, the maximum time it takes for the
+    // trench to close is equal to the trench top width (if sticking
+    // probability 1, otherwise the time until pinchoff should be even less)
+    // Additionally ormalize the time scale to the sticking probability, so
+    // that we get the same top layer thickness for different sticking
+    // probabilities.
+    NumericType processDuration =
+        normalizedProcessTime * topWidth / params.stickingProbability;
 
-      // copy top layer to capture deposition
-      auto depoLayer = lsSmartPointer<lsDomain<NumericType, D>>::New(trench);
-      geometry->insertNextLevelSet(depoLayer);
+    auto geometry = psSmartPointer<psDomain<NumericType, D>>::New();
+    geometry->insertNextLevelSet(trench);
 
-      // Instantiate the process
-      auto processModel =
-          SimpleDeposition<NumericType, D>(params.stickingProbability,
-                                           1.0 /* particle source power */)
-              .getProcessModel();
+    // copy top layer to capture deposition
+    auto depoLayer = lsSmartPointer<lsDomain<NumericType, D>>::New(trench);
+    geometry->insertNextLevelSet(depoLayer);
 
-      psProcess<NumericType, D> process;
-      process.setDomain(geometry);
-      process.setProcessModel(processModel);
-      process.setNumberOfRaysPerPoint(2000);
-      process.setProcessDuration(processDuration);
+    // Instantiate the process
+    auto processModel =
+        SimpleDeposition<NumericType, D>(params.stickingProbability,
+                                         1.0 /* particle source power */)
+            .getProcessModel();
 
-      // Run the process
-      process.apply();
+    psProcess<NumericType, D> process;
+    process.setDomain(geometry);
+    process.setProcessModel(processModel);
+    process.setNumberOfRaysPerPoint(2000);
+    process.setProcessDuration(processDuration);
 
-      std::cout << "Saving result as 'FilledTrench_volume.vtu'\n";
-      lsWriteVisualizationMesh<NumericType, D> visMesh;
-      for (auto ls : *geometry->getLevelSets()) {
-        visMesh.insertNextLevelSet(ls);
-      }
-      visMesh.setFileName("FilledTrench");
-      visMesh.apply();
+    // Run the process
+    process.apply();
+
+    std::cout << "Saving result as 'FilledTrench_volume.vtu'\n";
+    lsWriteVisualizationMesh<NumericType, D> visMesh;
+    for (auto ls : *geometry->getLevelSets()) {
+      visMesh.insertNextLevelSet(ls);
     }
+    visMesh.setFileName("FilledTrench");
+    visMesh.apply();
   }
 #endif
 
