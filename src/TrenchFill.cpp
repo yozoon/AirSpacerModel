@@ -9,18 +9,19 @@
 #include <lsSmartPointer.hpp>
 
 #ifdef WITH_VIENNAPS
-#include "TrenchGeometry.hpp"
 #include <SimpleDeposition.hpp>
 #include <lsWriteVisualizationMesh.hpp>
 #include <psProcess.hpp>
 #include <psSmartPointer.hpp>
+
+#include "TrenchGeometry.hpp"
 #endif
 
 #include "CSVReader.hpp"
 #include "SplineGridInterpolation.hpp"
 #include "Utils.hpp"
 
-#define SAMPLE_SLICE
+#define SAMPLE_SLICE 1
 
 template <typename NumericType> class Parameters {
 public:
@@ -28,7 +29,7 @@ public:
   const NumericType trenchBottomWidth;
   const NumericType trenchDepth;
   const NumericType topWidthLimit;
-  const NumericType angleLeeway;
+  const NumericType taperAngleTolerance;
 
   // Factory pattern to construct an instance of the class from a map
   static Parameters
@@ -40,7 +41,7 @@ public:
     NumericType topWidthLimit = 10;
 
     // How much the angle is allowed to increase while following the isoline
-    NumericType angleLeeway = 2.0;
+    NumericType taperAngleTolerance = 2.0;
 
     // Now assign the items
     Utils::AssignItems(map,
@@ -52,10 +53,10 @@ public:
                                    &Utils::toStrictlyPositive<NumericType>},
                        Utils::Item{"topWidthLimit", topWidthLimit,
                                    &Utils::toStrictlyPositive<NumericType>},
-                       Utils::Item{"angleLeeway", angleLeeway});
+                       Utils::Item{"taperAngleTolerance", taperAngleTolerance});
 
     return Parameters(stickingProbability, trenchBottomWidth, trenchDepth,
-                      topWidthLimit, angleLeeway);
+                      topWidthLimit, taperAngleTolerance);
   }
 
   void print() const {
@@ -64,18 +65,19 @@ public:
     std::cout << "- trenchBottomWidth: " << trenchBottomWidth << '\n';
     std::cout << "- trenchDepth: " << trenchDepth << '\n';
     std::cout << "- topWidthLimit: " << topWidthLimit << '\n';
-    std::cout << "- angleLeeway: " << angleLeeway << '\n';
+    std::cout << "- taperAngleTolerance: " << taperAngleTolerance << '\n';
   }
 
 private:
   // Private constructor, so that the user is forced to use the factory
   Parameters(NumericType passedStickingProbability,
              NumericType passedTrenchBottomWidth, NumericType passedTrenchDepth,
-             NumericType passedTopWidthLimit, NumericType passedAngleLeeway)
+             NumericType passedTopWidthLimit,
+             NumericType passedTaperAngleTolerance)
       : stickingProbability(passedStickingProbability),
         trenchBottomWidth(passedTrenchBottomWidth),
         trenchDepth(passedTrenchDepth), topWidthLimit(passedTopWidthLimit),
-        angleLeeway(passedAngleLeeway) {}
+        taperAngleTolerance(passedTaperAngleTolerance) {}
 };
 
 template <typename NumericType>
@@ -208,7 +210,7 @@ int main(const int argc, const char *const *const argv) {
     NumericType maxAngle = *angles.rbegin();
     NumericType aspectRatio = params.trenchDepth / params.trenchBottomWidth;
 
-#ifdef SAMPLE_SLICE
+#if SAMPLE_SLICE
     std::ofstream slice("slice.csv");
 
     size_t resolution = 20;
@@ -299,8 +301,10 @@ int main(const int argc, const char *const *const argv) {
       loc[1] += eta * ny;
       normalizedProcessTime = loc[3];
       thresholdAngle = loc[1];
-      if (loc[1] > maxAngle + params.angleLeeway) {
-        lsMessage::getInstance().addDebug("breaking based on leeway").print();
+      if (loc[1] > maxAngle + params.taperAngleTolerance) {
+        lsMessage::getInstance()
+            .addDebug("breaking based on taper angle tolerance")
+            .print();
         break;
       }
     }
@@ -321,8 +325,9 @@ int main(const int argc, const char *const *const argv) {
             << "the specified top width constraint of " << params.topWidthLimit
             << ".\n";
   if (success)
-    std::cout << "Assuming a rate of 1, the minimum required process time is "
-              << topWidth * normalizedProcessTime << '\n';
+    std::cout << "Assuming a top deposition rate of 1, the minimum required "
+                 "process time is "
+              << topWidth * normalizedProcessTime << ".\n";
   std::cout << std::endl;
 
 #ifdef WITH_VIENNAPS
@@ -338,7 +343,7 @@ int main(const int argc, const char *const *const argv) {
   std::cin >> c;
   if (c == 'y' || c == 'Y') {
     std::cout << "Running simulation...\n";
-    const NumericType gridDelta = params.trenchDepth / 200;
+    const NumericType gridDelta = params.trenchDepth / 250;
 
     // The horizontal extent is defined by the trench top width, or the bottom
     // width, whichever is larger. Extend it by 20%.
