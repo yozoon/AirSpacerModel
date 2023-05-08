@@ -9,9 +9,28 @@ from trench_features import TrenchFeatureExtractor, TrenchFeatures
 
 
 def print_surface(levelset: vls.lsDomain, filename: str) -> None:
+    """ Save a surface mesh of the provided levelset """
     mesh = vls.lsMesh()
     vls.lsToSurfaceMesh(levelset, mesh).apply()
     vls.lsVTKWriter(mesh, filename).apply()
+
+
+def extrude_profile(
+    grid: vls.hrleGrid,
+    profile: list[tuple[float, float]] | list[list[float]] | np.ndarray,
+) -> vls.lsDomain:
+    """ Create a levelset from the provided profile """
+    substrate = vls.lsDomain(grid)
+    mesh = vls.lsMesh()
+    # Insert all points of the profile into the mesh and connect them by lines
+    for i, pt in enumerate(profile):
+        mesh.insertNextNode([*pt, 0.])
+        mesh.insertNextLine([i, (i + 1) % len(profile)])
+
+    # Now create the levelset from the mesh
+    vls.lsFromSurfaceMesh(substrate, mesh).apply()
+
+    return substrate
 
 
 def arggroup(
@@ -19,6 +38,12 @@ def arggroup(
     tol: float = 1e-4,
     predicate: Callable[[np.ndarray], bool] | None = None,
 ):
+    """ Split the provided data into sections and return indices of data in these sections
+
+    Splits the data at points where the absolute change between into sections and return
+    indices of data in these sections consecutive values is larger than the provided
+    tolerance. If predicate is provided, the list of sections is additionally filtered
+    using the predicate."""
     arg = np.arange(data.shape[0])
     sections = np.where(np.abs(data[1:] - data[:-1]) >= tol)
 
@@ -41,12 +66,9 @@ def features_to_stamp(
     features: TrenchFeatures,
     min_group_size: int = 3,
 ) -> vls.lsDomain:
-    x = origin[0] + trench_top_width * np.hstack([
-        features.right_sidewall_above,
-        features.right_sidewall_below,
-        features.left_sidewall_below,
-        features.left_sidewall_above,
-    ])
+    """ Converts a trench feature object into a stamp (levelset) that can be subtracted
+    from another levelset to reproduce the geometry described by the feature object."""
+    x = origin[0] + trench_top_width * features.get_data()
 
     y = origin[1] + trench_depth * np.hstack([
         features.vertical_pos_above[::-1],
@@ -80,16 +102,7 @@ def features_to_stamp(
         else:
             profile = np.vstack([x[idx].tolist(), y[idx].tolist()]).T.tolist()
 
-        dom = vps.psDomain()
-        vps.psExtrudeProfile(psDomain=dom,
-                             gridDelta=grid.getGridDelta(),
-                             xExtent=2 * trench_top_width,
-                             yExtent=1.0,
-                             profile=profile,
-                             extrusionLength=1,
-                             fullExtent=True).apply()
-        dom.printSurface(f"hull_mesh_{i}.vtp")
-        hull = dom.getLevelSets()[0]
+        hull = extrude_profile(grid, profile)
         vls.lsBooleanOperation(stamp, hull, vls.lsBooleanOperationEnum.UNION).apply()
     return stamp
 
@@ -98,15 +111,17 @@ def main() -> None:
     grid_delta = 0.2
     sticking_probability = 0.5
     trench_top_width = 4
-    process_duration = 5
-    trench_depth = 10
+    process_duration = 7
+    trench_depth = 8
     taper_angle = 0.0
+    x_extent = 2 * trench_top_width
+    y_extent = 1.0
 
     geometry = vps.psDomain()
     vps.psMakeTrench(psDomain=geometry,
                      gridDelta=grid_delta,
-                     xExtent=2 * trench_top_width,
-                     yExtent=1.0,
+                     xExtent=x_extent,
+                     yExtent=y_extent,
                      baseHeight=-trench_depth,
                      trenchWidth=trench_top_width,
                      trenchHeight=trench_depth,
@@ -114,10 +129,6 @@ def main() -> None:
 
     model = vps.SimpleDeposition(stickingProbability=sticking_probability,
                                  sourceExponent=1.0)
-
-    mesh = vls.lsMesh()
-    vls.lsToDiskMesh(geometry.getLevelSets()[0], mesh).apply()
-    nodes = np.asarray(mesh.getNodes())
 
     process = vps.psProcess()
     process.setDomain(geometry)
@@ -142,7 +153,7 @@ def main() -> None:
         n_samples_above=64,
     )
 
-    features = extractor.extract(geometry)
+    features = extractor.extract(levelset=geometry.getLevelSets()[-1])
 
     if features:
         grid = geometry.getLevelSets()[-1].getGrid()
@@ -159,50 +170,19 @@ def main() -> None:
 
         plane_origin = origin
         plane_origin[1] += process_duration
-        normal = [0, 1, 0]
-        vls.lsMakeGeometry(reconstructed_geometry, vls.lsPlane(plane_origin,
-                                                               normal)).apply()
+        normal = [0.0, 1.0, 0.0]
+        vls.lsMakeGeometry(
+            reconstructed_geometry,
+            vls.lsPlane(plane_origin, normal),
+        ).apply()
 
-        vls.lsBooleanOperation(reconstructed_geometry, stamp,
-                               vls.lsBooleanOperationEnum.RELATIVE_COMPLEMENT).apply()
+        vls.lsBooleanOperation(
+            reconstructed_geometry,
+            stamp,
+            vls.lsBooleanOperationEnum.RELATIVE_COMPLEMENT,
+        ).apply()
 
         print_surface(reconstructed_geometry, "reconstructed.vtp")
-
-        # x = origin[0] + trench_top_width * np.hstack([
-        #     features.right_sidewall_above,
-        #     features.right_sidewall_below,
-        #     features.left_sidewall_below,
-        #     features.left_sidewall_above,
-        # ])
-
-        # idx = np.arange(len(x))
-        # nan_mask = np.isnan(x)
-        # idx = idx[~nan_mask]
-
-        # y = origin[1] - trench_depth + trench_depth * np.hstack([
-        #     features.vertical_pos_above[::-1],
-        #     features.vertical_pos_below[::-1],
-        # ])
-        # y = np.hstack([y, y[::-1]])
-
-        # idx = np.hstack([idx, idx[0]])
-        # x = x[idx]
-        # y = y[idx]
-
-        # plt.scatter(nodes[:, 0], nodes[:, 1], marker=".", color="k")
-
-        # mesh = vls.lsMesh()
-        # vls.lsToDiskMesh(geometry.getLevelSets()[0], mesh).apply()
-        # nodes = np.asarray(mesh.getNodes())
-
-        # plt.scatter(nodes[:, 0], nodes[:, 1], marker=".", color="k")
-
-        # # plt.plot(x, y)
-
-        # plt.axis("equal")
-        # plt.tight_layout()
-        # plt.grid()
-        # plt.show()
 
 
 if __name__ == "__main__":

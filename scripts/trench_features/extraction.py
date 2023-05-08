@@ -2,7 +2,6 @@ from typing import Optional
 
 import numpy as np
 import viennals2d as vls
-import viennaps2d as vps
 from scipy.spatial import KDTree
 
 from .features import TrenchFeatures
@@ -25,6 +24,12 @@ class TrenchFeatureExtractor:
         self.origin = origin
         self.n_samples_below = n_samples_below
         self.n_samples_above = n_samples_above
+
+        self.sample_locations_below = np.linspace(self.origin[1] - self.trench_depth,
+                                                  self.origin[1], self.n_samples_below)
+        self.sample_locations_above = np.linspace(
+            self.origin[1], self.origin[1] + 2 * self.trench_top_width,
+            self.n_samples_above)
 
     def _extract_widths(
         self,
@@ -81,8 +86,10 @@ class TrenchFeatureExtractor:
         return features
 
     def _extract_features(
-            self, nodes: np.ndarray,
-            sample_locations: tuple[np.ndarray, ...]) -> tuple[np.ndarray, ...]:
+        self,
+        nodes: np.ndarray,
+        sample_locations: tuple[np.ndarray, ...],
+    ) -> tuple[np.ndarray, ...]:
         # Instantiate the KDTree for neighbors lookup
         tree = KDTree(np.c_[nodes[:, 1].ravel()])
 
@@ -91,53 +98,46 @@ class TrenchFeatureExtractor:
             self._extract_widths(tree=tree, nodes=nodes, sample_locations=sl)
             for sl in sample_locations)
 
-    def extract(self, domain: vps.psDomain) -> Optional[TrenchFeatures]:
-        levelsets = domain.getLevelSets()
-        if len(levelsets) == 0:
-            return
-
-        ls = levelsets[-1]
+    def extract(
+        self,
+        levelset: vls.lsDomain,
+        normals_threshold: float = 0.03,
+    ) -> Optional[TrenchFeatures]:
         mesh = vls.lsMesh()
-        vls.lsToDiskMesh(ls, mesh).apply()
+        vls.lsToDiskMesh(levelset, mesh).apply()
         nodes = np.asarray(mesh.getNodes())
-        normals = np.asarray(mesh.getCellData().getVectorData("Normals"))
-
-        normal_threshold = 0.03
+        normals = np.asarray(mesh.getCellData().getVectorData(
+            vls.lsCalculateNormalVectors.normalVectorsLabel))
 
         # Extract the nodes on the right sidewall and sort them according to
         # their vertical position
-        right_mask = normals[:, 0] < -normal_threshold
+        right_mask = normals[:, 0] < -normals_threshold
         right_nodes = nodes[right_mask]
         sorted(right_nodes, key=lambda x: x[1])
 
         # Extract the nodes on the left sidewall and sort them according to
         # their vertical position
-        left_mask = normals[:, 0] > normal_threshold
+        left_mask = normals[:, 0] > normals_threshold
         left_nodes = nodes[left_mask]
         sorted(left_nodes, key=lambda x: x[1])
-
-        sample_locations_below = np.linspace(self.origin[1] - self.trench_depth,
-                                             self.origin[1], self.n_samples_below)
-        sample_locations_above = np.linspace(self.origin[1],
-                                             self.origin[1] + 2 * self.trench_top_width,
-                                             self.n_samples_above)
 
         # print(sample_locations_above)
         # print(sample_locations_below)
 
         right_sidewall_below, right_sidewall_above = self._extract_features(
             right_nodes,
-            sample_locations=(sample_locations_below[::-1], sample_locations_above[::-1]),
+            sample_locations=(self.sample_locations_below[::-1],
+                              self.sample_locations_above[::-1]),
         )
         left_sidewall_below, left_sidewall_above = self._extract_features(
             left_nodes,
-            sample_locations=(sample_locations_below, sample_locations_above),
+            sample_locations=(self.sample_locations_below, self.sample_locations_above),
         )
 
         return TrenchFeatures(
-            vertical_pos_below=(sample_locations_below - self.origin[1]) /
+            vertical_pos_below=(self.sample_locations_below - self.origin[1]) /
             self.trench_depth,
-            vertical_pos_above=(sample_locations_above - self.origin[1]) /
+            vertical_pos_above=(self.sample_locations_above - self.origin[1]) /
             self.trench_depth,
             right_sidewall_below=right_sidewall_below,
             right_sidewall_above=right_sidewall_above,

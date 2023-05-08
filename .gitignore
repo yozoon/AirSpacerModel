@@ -1,3 +1,7 @@
 build*/
 .vscode/
 .mypy_cache/
+*.vtp
+*.vtk
+*.vtu
+__pycache__/
