@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 template <typename NumericType, int D, typename FeatureExtractionType,
           typename WriterType>
-class AdvectionCallback : public psAdvectionCalback<NumericType, D> {
+class AdvectionCallback : public psAdvectionCallback<NumericType, D> {
 private:
   NumericType timeScale = 1.0;
   NumericType extractionInterval = 1.0;
@@ -32,7 +32,7 @@ private:
   psSmartPointer<std::vector<NumericType>> dataPtr = nullptr;
 
 protected:
-  using psAdvectionCalback<NumericType, D>::domain;
+  using psAdvectionCallback<NumericType, D>::domain;
 
 public:
   AdvectionCallback() {}

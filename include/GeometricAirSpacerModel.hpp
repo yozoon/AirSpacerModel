@@ -32,7 +32,6 @@ template <typename NumericType, int D> class GeometricAirSpacerModel {
   NumericType aspectRatio;
   NumericType leftTaperAngle;
   NumericType stickingProbability;
-  NumericType offset;
 
 public:
   GeometricAirSpacerModel(GeometryPtrType passedGeometry,
@@ -42,13 +41,12 @@ public:
                           const NumericType passedInitialTrenchTopWidth,
                           const NumericType passedAspectRatio,
                           const NumericType passedLeftTaperAngle,
-                          const NumericType passedStickingProbability,
-                          const NumericType passedOffset = 0.4)
+                          const NumericType passedStickingProbability)
       : geometry(passedGeometry), dataFilename(passedDataFilename),
         origin(passedOrigin), initialTrenchDepth(passedInitialTrenchDepth),
         initialTrenchTopWidth(passedInitialTrenchTopWidth),
         aspectRatio(passedAspectRatio), leftTaperAngle(passedLeftTaperAngle),
-        stickingProbability(passedStickingProbability), offset(passedOffset) {}
+        stickingProbability(passedStickingProbability) {}
 
   void apply() {
     if (!geometry) {
@@ -181,15 +179,11 @@ public:
 
     geometry->push_back(conformalLayer);
 
-    std::array<NumericType, 3> shiftedOrigin = origin;
-    shiftedOrigin[D - 1] -= offset;
-
-    trenchDepth -= offset;
     trenchTopWidth = trenchDepth / aspectRatio;
 
     auto stamp = createStampFromFeatures<NumericType, D>(
-        grid, shiftedOrigin, trenchDepth, trenchTopWidth, sampleLocations,
-        estimatedFeatures);
+        grid, origin, trenchDepth, trenchTopWidth, sampleLocations,
+        estimatedFeatures, true /* moveOffset */);
 
 #ifndef NDEBUG
     Utils::printSurface(stamp, "stamp.vtp");

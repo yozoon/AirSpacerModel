@@ -69,11 +69,9 @@ int main(int argc, const char *const *const argv) {
   geometry->printSurface("GR_initial.vtp");
 
   // Run a physical deposition simulation
-  auto processModel =
-      SimpleDeposition<NumericType, D>(
-          params.stickingProbability /* particle sticking probability */,
-          1.0 /* particle source power */)
-          .getProcessModel();
+  auto processModel = psSmartPointer<SimpleDeposition<NumericType, D>>::New(
+      params.stickingProbability /* particle sticking probability */,
+      1.0 /* particle source power */);
 
   psProcess<NumericType, D> process;
   process.setDomain(geometry);

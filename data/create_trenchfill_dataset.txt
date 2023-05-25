@@ -1,8 +1,8 @@
 # Configuration file for generating data for the TrenchFill application using CreateData
 filename = trenchfill_dataset.csv
-aspectRatios = 45, 25, 15, 5, 1
+aspectRatios = 35, 25, 15, 5, 1
 taperAngles = 20, 15, 10, 5, 0
-stickingProbabilities = 0.001, 0.004, 0.007, 0.01, 0.1
+stickingProbabilities = 0.005, 0.01, 0.03, 0.05, 0.07, 0.1
 timeSteps = 11
 symmetrical = true
 fixTopWidth = false

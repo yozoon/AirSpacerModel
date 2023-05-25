@@ -1,4 +1,5 @@
 """ Example demonstrating the extraction and reconstruction of geometry """
+import logging
 from typing import Callable
 
 import matplotlib.pyplot as plt
@@ -132,7 +133,7 @@ def main() -> None:
 
     process = vps.psProcess()
     process.setDomain(geometry)
-    process.setProcessModel(model.getProcessModel())
+    process.setProcessModel(model)
     process.setNumberOfRaysPerPoint(1000)
     process.setProcessDuration(process_duration / sticking_probability)
 

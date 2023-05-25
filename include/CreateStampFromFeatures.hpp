@@ -14,6 +14,7 @@
 #include <lsMakeGeometry.hpp>
 #include <lsMesh.hpp>
 #include <lsSmartPointer.hpp>
+#include <lsTransformMesh.hpp>
 
 #ifndef NDEBUG
 #include <lsVTKWriter.hpp>
@@ -26,7 +27,7 @@ lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
     const hrleGrid<D> &grid, const std::array<NumericType, 3> &origin,
     const NumericType trenchDepth, const NumericType trenchTopWidth,
     const std::vector<NumericType> &featureLocations,
-    const std::vector<NumericType> &features) {
+    const std::vector<NumericType> &features, bool moveOffset = false) {
   int verticalDir = D - 1;
   int horizontalDir = 0;
   int trenchDir = D - 2;
@@ -43,6 +44,8 @@ lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
   // Now create the stamp for the trench profile (the negative of the trench
   // geometry)
   auto stamp = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
+  std::vector<lsSmartPointer<lsMesh<>>> meshes;
+  std::vector<NumericType> verticalSectionOrigins;
 
   NumericType gridDelta = grid.getGridDelta();
 
@@ -84,6 +87,9 @@ lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
     }
 
     unsigned nextJ = j;
+
+    NumericType verticalSectionOrigin =
+        trenchBase + reconstructionRange * featureLocations[nextJ];
 
     // Add points of the right sidewall to the mesh until we encounter a
     // pinch-off (the distance between the left and right sidwall features
@@ -165,7 +171,7 @@ lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
 
     // If there are not enough points for a triangle skip the boolean
     // operation.
-    if (mesh->nodes.size() < 3) {
+    if (mesh->nodes.size() < 5) {
 #ifndef NDEBUG
       std::cout << "Mesh is just a line. Skipping.\n";
 #endif
@@ -237,15 +243,42 @@ lsSmartPointer<lsDomain<NumericType, D>> createStampFromFeatures(
         .apply();
 #endif
 
-    // Create the new levelset based on the mesh and union it with the
-    // previously generated levelsets.
-    auto hull = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
+    verticalSectionOrigins.push_back(verticalSectionOrigin);
+    meshes.push_back(mesh);
+  }
 
-    lsFromSurfaceMesh<NumericType, D>(hull, mesh).apply();
+  for (auto &v : verticalSectionOrigins) {
+    std::cout << v << ", ";
+  }
+  std::cout << std::endl;
 
-    lsBooleanOperation<NumericType, D>(stamp, hull,
-                                       lsBooleanOperationEnum::UNION)
-        .apply();
+  if (meshes.size() > 0) {
+    for (auto &mesh : meshes) {
+
+      // Create the new levelset based on the mesh and union it with the
+      // previously generated levelsets.
+      auto hull = lsSmartPointer<lsDomain<NumericType, D>>::New(grid);
+
+      if (moveOffset) {
+        NumericType offset = verticalSectionOrigins.back();
+        std::array<NumericType, 3> translationVector;
+        translationVector[verticalDir] = -offset;
+        lsTransformMesh<NumericType>(mesh, lsTransformEnum::TRANSLATION,
+                                     translationVector)
+            .apply();
+
+        std::array<NumericType, 3> scaleVector{1.0};
+        scaleVector[verticalDir] = (trenchDepth - offset) / trenchDepth;
+        lsTransformMesh<NumericType>(mesh, lsTransformEnum::SCALE, scaleVector)
+            .apply();
+      }
+
+      lsFromSurfaceMesh<NumericType, D>(hull, mesh).apply();
+
+      lsBooleanOperation<NumericType, D>(stamp, hull,
+                                         lsBooleanOperationEnum::UNION)
+          .apply();
+    }
   }
   return stamp;
 }

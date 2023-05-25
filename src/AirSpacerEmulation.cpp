@@ -16,7 +16,6 @@ template <typename NumericType> struct Parameters {
   NumericType aspectRatio = 15.0;
   NumericType leftTaperAngle = 0.0;
   NumericType stickingProbability = 0.1;
-  NumericType offset = 0.0;
 
   void fromMap(std::unordered_map<std::string, std::string> &m) {
     Utils::AssignItems(
@@ -37,8 +36,7 @@ template <typename NumericType> struct Parameters {
                 throw std::invalid_argument(
                     "`stickingProbability` must be in the range [1,0).");
               return value;
-            }},
-        Utils::Item{"offset", offset});
+            }});
   }
 };
 
@@ -46,7 +44,7 @@ int main(int argc, const char *const *const argv) {
   using NumericType = double;
   static constexpr int D = 2;
 
-  const NumericType gridDelta = .08;
+  const NumericType gridDelta = .02;
 
   // Parameters given by the N7 FinFET specification
   const NumericType initialTrenchTopWidth = 6.0;
@@ -114,8 +112,7 @@ int main(int argc, const char *const *const argv) {
   // Apply the emulation model to the geometry
   GeometricAirSpacerModel<NumericType, D>(
       geometry, dataFile, origin, initialTrenchDepth, initialTrenchTopWidth,
-      params.aspectRatio, params.leftTaperAngle, params.stickingProbability,
-      params.offset)
+      params.aspectRatio, params.leftTaperAngle, params.stickingProbability)
       .apply();
 
   // Export the resulting geometry as a visualization mesh

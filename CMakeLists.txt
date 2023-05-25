@@ -6,6 +6,14 @@ project("AirSpacerModel")
 find_package(ViennaLS REQUIRED)
 find_package(LAPACK REQUIRED)
 
+# Get the pre-c++20 span implementation library
+include(FetchContent)
+FetchContent_Declare(
+  spanlite
+  GIT_REPOSITORY https://github.com/martinmoene/span-lite.git
+)
+FetchContent_MakeAvailable(spanlite)
+
 find_package(fmt QUIET)
 set(VIENNAPS_VERBOSE OFF)
 find_package(ViennaPS QUIET)
@@ -30,7 +38,8 @@ else()
 endif()
 
 # Add include directories
-list(APPEND PROJECT_INCLUDE_DIRS ${VIENNALS_INCLUDE_DIRS} include/)
+list(APPEND PROJECT_INCLUDE_DIRS ${VIENNALS_INCLUDE_DIRS} include/ ${spanlite_SOURCE_DIR}/include/nonstd)
+
 # Add libraries
 list(APPEND PROJECT_LIBRARIES stdc++fs ${VIENNALS_LIBRARIES} ${LAPACK_LIBRARIES})
 

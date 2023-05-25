@@ -213,10 +213,8 @@ int main(const int argc, const char *const *const argv) {
     geometry->insertNextLevelSet(depoLayer);
 
     // Instantiate the process
-    auto processModel =
-        SimpleDeposition<NumericType, D>(stickingProbability,
-                                         1.0 /* particle source power */)
-            .getProcessModel();
+    auto processModel = psSmartPointer<SimpleDeposition<NumericType, D>>::New(
+        stickingProbability, 1.0 /* particle source power */);
 
     processModel->setAdvectionCallback(advectionCallback);
 

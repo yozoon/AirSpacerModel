@@ -155,11 +155,9 @@ int main(int argc, const char *const *const argv) {
   auto psGeom = psSmartPointer<psDomain<NumericType, D>>::New();
   psGeom->insertNextLevelSet(nonConformalLayer);
 
-  auto processModel =
-      SimpleDeposition<NumericType, D>(
-          params.stickingProbability /* particle sticking probability */,
-          1.0 /* particle source power */)
-          .getProcessModel();
+  auto processModel = psSmartPointer<SimpleDeposition<NumericType, D>>::New(
+      params.stickingProbability /* particle sticking probability */,
+      1.0 /* particle source power */);
 
   // Since we assume a top rate of 1, the maximum time it takes for the
   // trench to close is equal to the trench top width (if sticking
